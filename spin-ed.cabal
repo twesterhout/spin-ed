@@ -1,0 +1,90 @@
+cabal-version:       2.4
+name:                spin-ed
+version:             0.0.0.0
+synopsis:            User-friendly exact diagonalization for spin systems
+description:         User-friendly exact diagonalization for spin systems
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Tom Westerhout
+maintainer:          Tom Westerhout <14264576+twesterhout@users.noreply.github.com>
+copyright:           2020 Tom Westerhout
+build-type:          Simple
+extra-doc-files:     README.md
+                     CHANGELOG.md
+tested-with:         GHC == 8.8.4
+
+common common-options
+  build-depends:       base ^>= 4.13.0.0
+                     , relude
+                     , safe-exceptions
+                     , mtl
+                     , aeson
+                     , yaml
+  
+  mixins:              base hiding (Prelude)
+                     , relude (Relude as Prelude)
+  
+  ghc-options:         -Wall
+                       -Wcompat
+                       -Widentities
+                       -Wincomplete-uni-patterns
+                       -Wincomplete-record-updates
+  if impl(ghc >= 8.0)
+    ghc-options:       -Wredundant-constraints
+  if impl(ghc >= 8.2)
+    ghc-options:       -fhide-source-paths
+  if impl(ghc >= 8.4)
+    ghc-options:       -Wmissing-export-lists
+                       -Wpartial-fields
+  if impl(ghc >= 8.8)
+    ghc-options:       -Wmissing-deriving-strategies
+
+  default-language:    Haskell2010
+  default-extensions:  BangPatterns
+                       FlexibleContexts
+                       FlexibleInstances
+                       TypeFamilies
+                       ScopedTypeVariables
+                       OverloadedStrings
+
+library
+  import:              common-options
+  build-tool-depends:  c2hs:c2hs >= 0.28.6
+  hs-source-dirs:      src
+  exposed-modules:     SpinED
+                     , SpinED.Internal
+  extra-libraries:     lattice_symmetries
+  include-dirs:        /home/tom/src/lattice-symmetries/include
+  extra-lib-dirs:      /home/tom/src/lattice-symmetries/build
+  ld-options:          -Wl,-rpath /home/tom/src/lattice-symmetries/build
+
+executable spin-ed
+  import:              common-options
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  build-depends:       spin-ed
+  ghc-options:         -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
+
+test-suite spin-ed-test
+  import:              common-options
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       spin-ed
+                     , hspec
+  ghc-options:         -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
+
+benchmark spin-ed-benchmark
+  import:              common-options
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      benchmark
+  main-is:             Main.hs
+  build-depends:       gauge
+                     , spin-ed
+  ghc-options:         -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
