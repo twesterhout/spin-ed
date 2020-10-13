@@ -38,3 +38,34 @@ main = hspec $ do
       getPeriodicity s₁ `shouldBe` 2
       toSymmetry (SymmetrySpec [4, 3, 4, 1] False 0) `shouldThrow` anySpinEDException
       toSymmetry (SymmetrySpec [5, 4, 3, 2, 1] False 3) `shouldThrow` anyLatticeSymmetriesException
+  describe "instance fromJSON BasisSpec" $ do
+    it "parses JSON specifications" $ do
+      let (s₁ :: Either ParseException BasisSpec) =
+            decodeEither' . encodeUtf8 . unlines $
+              [ "number_spins: 4",
+                "hamming_weight: 2",
+                "symmetries:",
+                "  - permutation: [2, 3, 4, 1]",
+                "    sector: 0",
+                "  - permutation: [4, 3, 2, 1]",
+                "    sector: 0"
+              ]
+      s₁ `shouldSatisfy` isRight
+  describe "mkGroup" $ do
+    it "creates SymmetryGroup" $ do
+      s₁ <- toSymmetry $ SymmetrySpec [4, 3, 2, 1] False 0
+      s₂ <- toSymmetry $ SymmetrySpec [2, 3, 4, 1] False 0
+      s₃ <- toSymmetry $ SymmetrySpec [1, 2, 3, 4] True 0
+      g <- mkGroup [s₁, s₂, s₃]
+      getGroupSize g `shouldBe` 16
+  describe "instance fromJSON InteractionSpec" $ do
+    it "parses JSON specifications" $ do
+      let (s₁ :: Either ParseException InteractionSpec) =
+            decodeEither' . encodeUtf8 . unlines $
+              [ "matrix: [[1, 2,  1],",
+                "         [4, 2,  1],",
+                "         [1, -2, 3]]",
+                "sites: [[0, 0, 0], [1, 1, 1]]"
+              ]
+      s₁ `shouldSatisfy` isRight
+      print s₁

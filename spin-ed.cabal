@@ -18,7 +18,9 @@ common common-options
                      , relude
                      , safe-exceptions
                      , mtl
+                     , vector
                      , aeson
+                     , scientific
                      , yaml
   
   mixins:              base hiding (Prelude)
