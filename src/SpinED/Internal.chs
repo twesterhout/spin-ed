@@ -4,21 +4,23 @@
 -- Maintainer: Tom Westerhout <14264576+twesterhout@users.noreply.github.com>
 module SpinED.Internal where
 
-import Control.Exception.Safe (MonadThrow, throw, bracket)
-import Foreign.Marshal.Array (withArrayLen)
-import Foreign.Marshal.Alloc (alloca)
-import Foreign.Marshal.Utils (fromBool)
-import Foreign.C.Types
+import Control.Exception.Safe (MonadThrow, bracket, throw)
+import Data.Complex
+import Data.Vector.Storable (Vector)
+import qualified Data.Vector.Storable as V
 import Foreign.C.String
+import Foreign.C.Types
 import Foreign.ForeignPtr
+import Foreign.Marshal.Alloc (alloca)
+import Foreign.Marshal.Array (withArrayLen)
+import Foreign.Marshal.Utils (fromBool)
 import Foreign.Ptr
 import Foreign.Storable (Storable (..))
 import System.IO.Unsafe (unsafePerformIO)
 
 #include <lattice_symmetries/lattice_symmetries.h>
 
-
-data LatticeSymmetriesException = LatticeSymmetriesException { eCode :: Int, eMessage :: Text }
+data LatticeSymmetriesException = LatticeSymmetriesException {eCode :: Int, eMessage :: Text}
   deriving (Show)
 
 instance Exception LatticeSymmetriesException
@@ -29,6 +31,7 @@ data SpinEDException = SpinEDException Text
 instance Exception SpinEDException
 
 foreign import ccall unsafe "ls_error_to_string" ls_error_to_string :: CInt -> IO CString
+
 foreign import ccall unsafe "ls_destroy_string" ls_destroy_string :: CString -> IO ()
 
 getErrorMessage :: Int -> IO Text
@@ -38,8 +41,9 @@ getErrorMessage c = bracket (ls_error_to_string (fromIntegral c)) ls_destroy_str
 checkStatus :: (MonadIO m, MonadThrow m, Integral a) => a -> m ()
 checkStatus c
   | c == 0 = return ()
-  | otherwise = let c' = fromIntegral c
-                 in throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
+  | otherwise =
+    let c' = fromIntegral c
+     in throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
 
 newtype Symmetry = Symmetry (ForeignPtr ())
 
@@ -50,8 +54,11 @@ foreign import ccall unsafe "&ls_destroy_symmetry"
   ls_destroy_symmetry :: FunPtr (Ptr () -> IO ())
 
 foreign import ccall unsafe "ls_get_sector" ls_get_sector :: Ptr () -> IO CUInt
+
 foreign import ccall unsafe "ls_get_flip" ls_get_flip :: Ptr () -> IO CBool
+
 foreign import ccall unsafe "ls_get_phase" ls_get_phase :: Ptr () -> IO CDouble
+
 foreign import ccall unsafe "ls_get_periodicity" ls_get_periodicity :: Ptr () -> IO CUInt
 
 getSector :: Symmetry -> Int
@@ -75,8 +82,9 @@ mkSymmetry permutation invert sector = do
     alloca $ \ptrPtr -> do
       c <- withArrayLen (fromIntegral <$> permutation) $ \n permutationPtr ->
         ls_create_symmetry ptrPtr (fromIntegral n) permutationPtr (fromBool invert) (fromIntegral sector)
-      if c == 0 then (,) <$> pure c <*> peek ptrPtr
-                else pure (c, nullPtr)
+      if c == 0
+        then (,) <$> pure c <*> peek ptrPtr
+        else pure (c, nullPtr)
   checkStatus code
   fmap Symmetry . liftIO $ newForeignPtr ls_destroy_symmetry ptr
 
@@ -93,9 +101,10 @@ newtype SymmetryGroup = SymmetryGroup (ForeignPtr ())
 
 withSymmetries :: [Symmetry] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
 withSymmetries xs func = loop [] xs
-  where withSymmetry (Symmetry p) = withForeignPtr p
-        loop acc (y:ys) = withSymmetry y $ \y' -> loop (y':acc) ys
-        loop acc [] = withArrayLen (reverse acc) func
+  where
+    withSymmetry (Symmetry p) = withForeignPtr p
+    loop acc (y : ys) = withSymmetry y $ \y' -> loop (y' : acc) ys
+    loop acc [] = withArrayLen (reverse acc) func
 
 mkGroup :: (MonadIO m, MonadThrow m) => [Symmetry] -> m SymmetryGroup
 mkGroup xs = do
@@ -103,8 +112,9 @@ mkGroup xs = do
     alloca $ \ptrPtr -> do
       c <- withSymmetries xs $ \n xsPtr ->
         ls_create_group ptrPtr (fromIntegral n) xsPtr
-      if c == 0 then (,) <$> pure c <*> peek ptrPtr
-                else pure (c, nullPtr)
+      if c == 0
+        then (,) <$> pure c <*> peek ptrPtr
+        else pure (c, nullPtr)
   checkStatus code
   fmap SymmetryGroup . liftIO $ newForeignPtr ls_destroy_group ptr
 
@@ -130,9 +140,47 @@ mkBasis (SymmetryGroup group) numberSpins hammingWeight = do
     alloca $ \ptrPtr -> do
       c <- withForeignPtr group $ \groupPtr ->
         ls_create_spin_basis ptrPtr groupPtr (fromIntegral numberSpins) hammingWeight'
-      if c == 0 then (,) <$> pure c <*> peek ptrPtr
-                else pure (c, nullPtr)
+      if c == 0
+        then (,) <$> pure c <*> peek ptrPtr
+        else pure (c, nullPtr)
   checkStatus code
   fmap SpinBasis . liftIO $ newForeignPtr ls_destroy_spin_basis ptr
 
+foreign import ccall unsafe "ls_create_interaction1"
+  ls_create_interaction1 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
 
+foreign import ccall unsafe "ls_create_interaction2"
+  ls_create_interaction2 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
+
+foreign import ccall unsafe "ls_create_interaction3"
+  ls_create_interaction3 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
+
+foreign import ccall unsafe "ls_create_interaction4"
+  ls_create_interaction4 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
+
+foreign import ccall unsafe "&ls_destroy_interaction"
+  ls_destroy_interaction :: FunPtr (Ptr () -> IO ())
+
+newtype Interaction = Interaction (ForeignPtr ())
+
+mkInteraction :: (MonadIO m, MonadThrow m) => Int -> Vector (Complex Double) -> Vector Int -> m Interaction
+mkInteraction n matrix sites = do
+  (code, ptr) <- liftIO $
+    alloca $ \ptrPtr -> do
+      c <- V.unsafeWith matrix $ \matrixPtr ->
+        V.unsafeWith (V.map fromIntegral sites) $ \sitesPtr ->
+          create ptrPtr matrixPtr numberSites sitesPtr
+      if c == 0
+        then (,) <$> pure c <*> peek ptrPtr
+        else pure (c, nullPtr)
+  checkStatus code
+  fmap Interaction . liftIO $ newForeignPtr ls_destroy_interaction ptr
+  where
+    numberSites = fromIntegral $ V.length sites `div` n
+    create =
+      case n of
+        1 -> ls_create_interaction1
+        2 -> ls_create_interaction2
+        3 -> ls_create_interaction3
+        4 -> ls_create_interaction4
+        _ -> error $ "invalid n: " <> show n
