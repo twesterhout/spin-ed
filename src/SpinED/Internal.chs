@@ -20,6 +20,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 #include <lattice_symmetries/lattice_symmetries.h>
 
+-- | Exceptions thrown when an error occurs in @liblattice_symmetries@.
 data LatticeSymmetriesException = LatticeSymmetriesException {eCode :: Int, eMessage :: Text}
   deriving (Show)
 
@@ -34,10 +35,17 @@ foreign import ccall unsafe "ls_error_to_string" ls_error_to_string :: CInt -> I
 
 foreign import ccall unsafe "ls_destroy_string" ls_destroy_string :: CString -> IO ()
 
-getErrorMessage :: Int -> IO Text
+-- | Retrieve textual representation of an error
+getErrorMessage ::
+  -- | Error code returned by @lattice_symmetries@ library
+  Int ->
+  -- | Explanation of the error
+  IO Text
 getErrorMessage c = bracket (ls_error_to_string (fromIntegral c)) ls_destroy_string $ \s ->
   toText <$> peekCString s
 
+-- | Check the status code returned by @lattice_symmetries@ library. If it
+-- indicates an error, 'LatticeSymmetriesException' is thrown.
 checkStatus :: (MonadIO m, MonadThrow m, Integral a) => a -> m ()
 checkStatus c
   | c == 0 = return ()
@@ -76,8 +84,22 @@ getPhase (Symmetry p) = unsafePerformIO $! withForeignPtr p $ \p' ->
   coerce <$> ls_get_phase p'
 {-# NOINLINE getPhase #-}
 
-mkSymmetry :: (MonadIO m, MonadThrow m) => [Int] -> Bool -> Int -> m Symmetry
-mkSymmetry permutation invert sector = do
+mkSymmetry ::
+  (MonadIO m, MonadThrow m) =>
+  -- | Permutation
+  [Int] ->
+  -- | Whether to apply spin inversion
+  Bool ->
+  -- | Symmetry sector
+  Int ->
+  m Symmetry
+mkSymmetry !permutation !invert !sector = do
+  -- Make sure permutation and sector can be safely converted to unsigned
+  -- representations. Everything else is checked by ls_create_symmetry
+  when (any (<0) permutation) . throw . SpinEDException $
+    "invalid permutation: " <> show permutation <> "; indices must be non-negative"
+  when (sector < 0) . throw . SpinEDException $
+    "invalid sector: " <> show sector <> "; expected a non-negative number"
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- withArrayLen (fromIntegral <$> permutation) $ \n permutationPtr ->
@@ -88,6 +110,8 @@ mkSymmetry permutation invert sector = do
   checkStatus code
   fmap Symmetry . liftIO $ newForeignPtr ls_destroy_symmetry ptr
 
+newtype SymmetryGroup = SymmetryGroup (ForeignPtr ())
+
 foreign import ccall unsafe "ls_create_group"
   ls_create_group :: Ptr (Ptr ()) -> CUInt -> Ptr (Ptr ()) -> IO CInt
 
@@ -97,8 +121,7 @@ foreign import ccall unsafe "&ls_destroy_group"
 foreign import ccall unsafe "ls_get_group_size"
   ls_get_group_size :: Ptr () -> IO CUInt
 
-newtype SymmetryGroup = SymmetryGroup (ForeignPtr ())
-
+-- | Extension of 'withForeignPtr' to lists of 'ForeignPtr's.
 withManyForeignPtr :: [ForeignPtr a] -> (Int -> Ptr (Ptr a) -> IO b) -> IO b
 withManyForeignPtr xs func = loop [] xs
   where
@@ -111,7 +134,7 @@ withSymmetries xs func = withManyForeignPtr pointers func
     pointers = (\(Symmetry p) -> p) <$> xs
 
 mkGroup :: (MonadIO m, MonadThrow m) => [Symmetry] -> m SymmetryGroup
-mkGroup xs = do
+mkGroup !xs = do
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- withSymmetries xs $ \n xsPtr ->
@@ -127,19 +150,24 @@ getGroupSize (SymmetryGroup p) = unsafePerformIO $! withForeignPtr p $ \p' ->
   fromIntegral <$> ls_get_group_size p'
 {-# NOINLINE getGroupSize #-}
 
+newtype SpinBasis = SpinBasis (ForeignPtr ())
+
 foreign import ccall unsafe "ls_create_spin_basis"
   ls_create_spin_basis :: Ptr (Ptr ()) -> Ptr () -> CUInt -> CInt -> IO CInt
 
 foreign import ccall unsafe "&ls_destroy_spin_basis"
   ls_destroy_spin_basis :: FunPtr (Ptr () -> IO ())
 
-newtype SpinBasis = SpinBasis (ForeignPtr ())
-
 mkBasis :: (MonadIO m, MonadThrow m) => SymmetryGroup -> Int -> Maybe Int -> m SpinBasis
-mkBasis (SymmetryGroup group) numberSpins hammingWeight = do
-  let hammingWeight' = case hammingWeight of
-        Just x -> fromIntegral x
-        Nothing -> (-1)
+mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
+  when (numberSpins <= 0) . throw . SpinEDException $
+    "invalid number of spins: " <> show numberSpins <> "; expected a positive number"
+  hammingWeight' <- case hammingWeight of
+    Just x -> do
+      when (x < 0) . throw . SpinEDException $
+        "invalid Hamming weight: " <> show x <> "; expected a non-negative number"
+      return $ fromIntegral x
+    Nothing -> return (-1)
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- withForeignPtr group $ \groupPtr ->
@@ -215,8 +243,8 @@ mkOperator (SpinBasis basis) terms = do
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- withInteractions terms $ \n interactionsPtr ->
-            withForeignPtr basis $ \basisPtr ->
-              ls_create_operator ptrPtr basisPtr (fromIntegral n) interactionsPtr
+        withForeignPtr basis $ \basisPtr ->
+          ls_create_operator ptrPtr basisPtr (fromIntegral n) interactionsPtr
       if c == 0
         then (,) <$> pure c <*> peek ptrPtr
         else pure (c, nullPtr)

@@ -32,11 +32,7 @@ import Data.Vector.Storable (MVector, Vector)
 import qualified Data.Vector.Storable as V
 import SpinED.Internal
 
-data SymmetrySpec = SymmetrySpec
-  { sPermutation :: [Int],
-    sFlip :: Bool,
-    sSector :: Int
-  }
+data SymmetrySpec = SymmetrySpec ![Int] !Bool !Int
   deriving (Read, Show, Eq)
 
 instance FromJSON SymmetrySpec where
@@ -75,11 +71,7 @@ toSymmetry (SymmetrySpec p f s) = do
   s' <- validateSector s
   mkSymmetry p' f s'
 
-data BasisSpec = BasisSpec
-  { bNumberSpins :: Int,
-    bHammingWeight :: Maybe Int,
-    bSymmetries :: [SymmetrySpec]
-  }
+data BasisSpec = BasisSpec !Int !(Maybe Int) ![SymmetrySpec]
   deriving (Read, Show, Eq)
 
 instance FromJSON BasisSpec where
@@ -116,10 +108,7 @@ instance FromJSON (Complex Double) where
     _ -> typeMismatch "Complex" v
   parseJSON v = typeMismatch "Complex" v
 
-data InteractionSpec = InteractionSpec
-  { iMatrix :: [[Complex Double]],
-    iSites :: [[Int]]
-  }
+data InteractionSpec = InteractionSpec ![[Complex Double]] ![[Int]]
   deriving (Read, Show, Eq)
 
 instance FromJSON InteractionSpec where
@@ -155,6 +144,14 @@ toInteraction (InteractionSpec matrix sites) = do
   matrix' <- validateMatrix (2 ^ n) matrix
   mkInteraction n matrix' sites'
 
-data Config = Config
-  {
+data OperatorSpec = OperatorSpec !Text ![InteractionSpec]
+  deriving (Read, Show)
+
+data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec]
+  deriving (Read, Show)
+
+data UserConfig = UserConfig
+  { cBasis :: !SpinBasis,
+    cHamiltonian :: !Operator,
+    cObservables :: ![Operator]
   }
