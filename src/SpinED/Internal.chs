@@ -96,7 +96,7 @@ mkSymmetry ::
 mkSymmetry !permutation !invert !sector = do
   -- Make sure permutation and sector can be safely converted to unsigned
   -- representations. Everything else is checked by ls_create_symmetry
-  when (any (<0) permutation) . throw . SpinEDException $
+  when (any (< 0) permutation) . throw . SpinEDException $
     "invalid permutation: " <> show permutation <> "; indices must be non-negative"
   when (sector < 0) . throw . SpinEDException $
     "invalid sector: " <> show sector <> "; expected a non-negative number"
@@ -178,6 +178,10 @@ mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
   checkStatus code
   fmap SpinBasis . liftIO $ newForeignPtr ls_destroy_spin_basis ptr
 
+newtype Interaction = Interaction (ForeignPtr ())
+
+type CreateInteraction = Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
+
 foreign import ccall unsafe "ls_create_interaction1"
   ls_create_interaction1 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
 
@@ -196,29 +200,92 @@ foreign import ccall unsafe "ls_interaction_is_real"
 foreign import ccall unsafe "&ls_destroy_interaction"
   ls_destroy_interaction :: FunPtr (Ptr () -> IO ())
 
-newtype Interaction = Interaction (ForeignPtr ())
+toMatrix ::
+  (MonadThrow m, Show r, Real r) =>
+  -- | Expected dimension @n@ of the matrix
+  Int ->
+  -- | Square @matrix@ of dimension @n@
+  [[Complex r]] ->
+  -- | Row-major representation of @matrix@
+  m (Vector (Complex Double))
+toMatrix !dim !rows = do
+  when (length rows /= dim) . throw . SpinEDException $
+    "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
+  when (any ((/= dim) . length) rows) . throw . SpinEDException $
+    "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
+  return . V.fromList . fmap (fmap (fromRational . toRational)) . concat $ rows
 
-mkInteraction :: (MonadIO m, MonadThrow m) => Int -> Vector (Complex Double) -> Vector Int -> m Interaction
-mkInteraction n matrix sites = do
+class MakeInteraction a where
+  mkInteraction' :: (MonadIO m, MonadThrow m, Show r, Real r) => [[Complex r]] -> [a] -> m Interaction
+
+instance MakeInteraction Int where
+  mkInteraction' matrix sites =
+    toMatrix 2 matrix >>= \matrix' ->
+      unsafeMkInteraction ls_create_interaction1 (length sites) matrix' sites'
+    where
+      sites' = V.fromList sites
+
+instance MakeInteraction (Int, Int) where
+  mkInteraction' matrix sites =
+    toMatrix 4 matrix >>= \matrix' ->
+      unsafeMkInteraction ls_create_interaction2 (length sites) matrix' sites'
+    where
+      sites' = V.fromList $ sites >>= \(x₁, x₂) -> [x₁, x₂]
+
+instance MakeInteraction (Int, Int, Int) where
+  mkInteraction' matrix sites =
+    toMatrix 8 matrix >>= \matrix' ->
+      unsafeMkInteraction ls_create_interaction3 (length sites) matrix' sites'
+    where
+      sites' = V.fromList $ sites >>= \(x₁, x₂, x₃) -> [x₁, x₂, x₃]
+
+instance MakeInteraction (Int, Int, Int, Int) where
+  mkInteraction' matrix sites =
+    toMatrix 16 matrix >>= \matrix' ->
+      unsafeMkInteraction ls_create_interaction4 (length sites) matrix' sites'
+    where
+      sites' = V.fromList $ sites >>= \(x₁, x₂, x₃, x₄) -> [x₁, x₂, x₃, x₄]
+
+instance MakeInteraction [Int] where
+  mkInteraction' matrix rows@(r : _) = case n of
+    1 -> mkInteraction' matrix =<< mapM match1 rows
+    2 -> mkInteraction' matrix =<< mapM match2 rows
+    3 -> mkInteraction' matrix =<< mapM match3 rows
+    4 -> mkInteraction' matrix =<< mapM match4 rows
+    _ ->
+      throw . SpinEDException $
+        "currently only 1-, 2-, 3-, and 4-point interactions are supported, but received n=" <> show n
+    where
+      n = length r
+      match1 xs = case xs of
+        [x₁] -> return x₁
+        _ -> throw failure
+      match2 xs = case xs of
+        [x₁, x₂] -> return (x₁, x₂)
+        _ -> throw failure
+      match3 xs = case xs of
+        [x₁, x₂, x₃] -> return (x₁, x₂, x₃)
+        _ -> throw failure
+      match4 xs = case xs of
+        [x₁, x₂, x₃, x₄] -> return (x₁, x₂, x₃, x₄)
+        _ -> throw failure
+      failure =
+        SpinEDException $
+          "invalid sites: " <> show rows <> "; expected an array of length-" <> show n <> " tuples"
+
+unsafeMkInteraction :: (MonadIO m, MonadThrow m) => CreateInteraction -> Int -> Vector (Complex Double) -> Vector Int -> m Interaction
+unsafeMkInteraction ffiCreate numberSites matrix sites = do
+  when (V.any (< 0) sites) . throw . SpinEDException $ "site indices must be all non-negative numbers"
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- V.unsafeWith matrix $ \matrixPtr ->
         V.unsafeWith (V.map fromIntegral sites) $ \sitesPtr ->
-          create ptrPtr matrixPtr numberSites sitesPtr
+          ffiCreate ptrPtr matrixPtr (fromIntegral numberSites) sitesPtr
       if c == 0
         then (,) <$> pure c <*> peek ptrPtr
         else pure (c, nullPtr)
   checkStatus code
   fmap Interaction . liftIO $ newForeignPtr ls_destroy_interaction ptr
-  where
-    numberSites = fromIntegral $ V.length sites `div` n
-    create =
-      case n of
-        1 -> ls_create_interaction1
-        2 -> ls_create_interaction2
-        3 -> ls_create_interaction3
-        4 -> ls_create_interaction4
-        _ -> error $ "invalid n: " <> show n
 
 isRealInteraction :: Interaction -> Bool
 isRealInteraction (Interaction p) = unsafePerformIO $! withForeignPtr p $ \p' ->

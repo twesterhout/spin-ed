@@ -137,12 +137,7 @@ validateSites rows@(r : rs) = do
   return (dim, V.fromList (concat rows))
 
 toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
-toInteraction (InteractionSpec matrix sites) = do
-  (n, sites') <- validateSites sites
-  when (n /= 1 && n /= 2 && n /= 3 && n /= 4) . throw . SpinEDException $
-    "currently only 1-, 2-, 3-, and 4-point interactions are supported, but received n=" <> show n
-  matrix' <- validateMatrix (2 ^ n) matrix
-  mkInteraction n matrix' sites'
+toInteraction (InteractionSpec matrix sites) = mkInteraction' matrix sites
 
 data OperatorSpec = OperatorSpec !Text ![InteractionSpec]
   deriving (Read, Show)
