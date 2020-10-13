@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Data.Complex
 import Data.Yaml
 import SpinED
 import Test.Hspec
@@ -69,3 +70,13 @@ main = hspec $ do
               ]
       s₁ `shouldSatisfy` isRight
       print s₁
+  describe "toInteraction" $ do
+    it "creates Interaction from InteractionSpec" $ do
+      let matrix =
+            [ [1.0 :+ 0.0, 0.0 :+ 0.0],
+              [0.0 :+ 0.0, (-1.0) :+ 0.0]
+            ]
+          sites = [[0], [2]]
+          spec = InteractionSpec matrix sites
+      x <- toInteraction spec
+      isRealInteraction x `shouldBe` True

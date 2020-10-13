@@ -99,12 +99,16 @@ foreign import ccall unsafe "ls_get_group_size"
 
 newtype SymmetryGroup = SymmetryGroup (ForeignPtr ())
 
-withSymmetries :: [Symmetry] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
-withSymmetries xs func = loop [] xs
+withManyForeignPtr :: [ForeignPtr a] -> (Int -> Ptr (Ptr a) -> IO b) -> IO b
+withManyForeignPtr xs func = loop [] xs
   where
-    withSymmetry (Symmetry p) = withForeignPtr p
-    loop acc (y : ys) = withSymmetry y $ \y' -> loop (y' : acc) ys
+    loop acc (y : ys) = withForeignPtr y $ \y' -> loop (y' : acc) ys
     loop acc [] = withArrayLen (reverse acc) func
+
+withSymmetries :: [Symmetry] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
+withSymmetries xs func = withManyForeignPtr pointers func
+  where
+    pointers = (\(Symmetry p) -> p) <$> xs
 
 mkGroup :: (MonadIO m, MonadThrow m) => [Symmetry] -> m SymmetryGroup
 mkGroup xs = do
@@ -158,6 +162,9 @@ foreign import ccall unsafe "ls_create_interaction3"
 foreign import ccall unsafe "ls_create_interaction4"
   ls_create_interaction4 :: Ptr (Ptr ()) -> Ptr (Complex Double) -> CUInt -> Ptr CUShort -> IO CInt
 
+foreign import ccall unsafe "ls_interaction_is_real"
+  ls_interaction_is_real :: Ptr () -> IO CBool
+
 foreign import ccall unsafe "&ls_destroy_interaction"
   ls_destroy_interaction :: FunPtr (Ptr () -> IO ())
 
@@ -184,3 +191,34 @@ mkInteraction n matrix sites = do
         3 -> ls_create_interaction3
         4 -> ls_create_interaction4
         _ -> error $ "invalid n: " <> show n
+
+isRealInteraction :: Interaction -> Bool
+isRealInteraction (Interaction p) = unsafePerformIO $! withForeignPtr p $ \p' ->
+  toEnum . fromIntegral <$> ls_interaction_is_real p'
+{-# NOINLINE isRealInteraction #-}
+
+newtype Operator = Operator (ForeignPtr ())
+
+foreign import ccall unsafe "ls_create_operator"
+  ls_create_operator :: Ptr (Ptr ()) -> Ptr () -> CUInt -> Ptr (Ptr ()) -> IO CInt
+
+foreign import ccall unsafe "&ls_destroy_operator"
+  ls_destroy_operator :: FunPtr (Ptr () -> IO ())
+
+withInteractions :: [Interaction] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
+withInteractions xs func = withManyForeignPtr pointers func
+  where
+    pointers = (\(Interaction p) -> p) <$> xs
+
+mkOperator :: (MonadIO m, MonadThrow m) => SpinBasis -> [Interaction] -> m Operator
+mkOperator (SpinBasis basis) terms = do
+  (code, ptr) <- liftIO $
+    alloca $ \ptrPtr -> do
+      c <- withInteractions terms $ \n interactionsPtr ->
+            withForeignPtr basis $ \basisPtr ->
+              ls_create_operator ptrPtr basisPtr (fromIntegral n) interactionsPtr
+      if c == 0
+        then (,) <$> pure c <*> peek ptrPtr
+        else pure (c, nullPtr)
+  checkStatus code
+  fmap Operator . liftIO $ newForeignPtr ls_destroy_operator ptr

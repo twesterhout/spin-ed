@@ -13,6 +13,8 @@ module SpinED
     SymmetryGroup (..),
     InteractionSpec (..),
     toSymmetry,
+    toInteraction,
+    isRealInteraction,
     getSector,
     getPeriodicity,
     getPhase,
@@ -144,6 +146,14 @@ validateSites rows@(r : rs) = do
   when (any ((/= dim) . length) rs) . throw . SpinEDException $
     "invalid sites: " <> show rows <> "; expected an array of length-" <> show dim <> " tuples"
   return (dim, V.fromList (concat rows))
+
+toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
+toInteraction (InteractionSpec matrix sites) = do
+  (n, sites') <- validateSites sites
+  when (n /= 1 && n /= 2 && n /= 3 && n /= 4) . throw . SpinEDException $
+    "currently only 1-, 2-, 3-, and 4-point interactions are supported, but received n=" <> show n
+  matrix' <- validateMatrix (2 ^ n) matrix
+  mkInteraction n matrix' sites'
 
 data Config = Config
   {
