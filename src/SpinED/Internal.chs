@@ -257,18 +257,14 @@ instance MakeInteraction [Int] where
         "currently only 1-, 2-, 3-, and 4-point interactions are supported, but received n=" <> show n
     where
       n = length r
-      match1 xs = case xs of
-        [x₁] -> return x₁
-        _ -> throw failure
-      match2 xs = case xs of
-        [x₁, x₂] -> return (x₁, x₂)
-        _ -> throw failure
-      match3 xs = case xs of
-        [x₁, x₂, x₃] -> return (x₁, x₂, x₃)
-        _ -> throw failure
-      match4 xs = case xs of
-        [x₁, x₂, x₃, x₄] -> return (x₁, x₂, x₃, x₄)
-        _ -> throw failure
+      match1 [x₁] = return x₁
+      match1 _ = throw failure
+      match2 [x₁, x₂] = return (x₁, x₂)
+      match2 _ = throw failure
+      match3 [x₁, x₂, x₃] = return (x₁, x₂, x₃)
+      match3 _ = throw failure
+      match4 [x₁, x₂, x₃, x₄] = return (x₁, x₂, x₃, x₄)
+      match4 _ = throw failure
       failure =
         SpinEDException $
           "invalid sites: " <> show rows <> "; expected an array of length-" <> show n <> " tuples"
