@@ -1,1 +1,4 @@
 resolver: lts-16.17
+extra-deps:
+  - git: https://github.com/twesterhout/hdf5-hs.git
+    commit: 20fd242cb2aebfa78060ab8f81710f7ccb6d6b6e
