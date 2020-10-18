@@ -15,6 +15,7 @@ import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (withArrayLen)
 import Foreign.Marshal.Utils (fromBool)
 import Foreign.Ptr
+import Numeric.PRIMME
 import Foreign.Storable (Storable (..))
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -247,6 +248,9 @@ instance MakeInteraction (Int, Int, Int, Int) where
       sites' = V.fromList $ sites >>= \(x₁, x₂, x₃, x₄) -> [x₁, x₂, x₃, x₄]
 
 instance MakeInteraction [Int] where
+  mkInteraction' _ [] =
+    throw . SpinEDException $
+      "zero-point interactions (i.e. constant factors) are not supported"
   mkInteraction' matrix rows@(r : _) = case n of
     1 -> mkInteraction' matrix =<< mapM match1 rows
     2 -> mkInteraction' matrix =<< mapM match2 rows
@@ -288,7 +292,7 @@ isRealInteraction (Interaction p) = unsafePerformIO $! withForeignPtr p $ \p' ->
   toEnum . fromIntegral <$> ls_interaction_is_real p'
 {-# NOINLINE isRealInteraction #-}
 
-newtype Operator = Operator (ForeignPtr ())
+newtype Operator' = Operator' (ForeignPtr ())
 
 foreign import ccall unsafe "ls_create_operator"
   ls_create_operator :: Ptr (Ptr ()) -> Ptr () -> CUInt -> Ptr (Ptr ()) -> IO CInt
@@ -296,12 +300,15 @@ foreign import ccall unsafe "ls_create_operator"
 foreign import ccall unsafe "&ls_destroy_operator"
   ls_destroy_operator :: FunPtr (Ptr () -> IO ())
 
+foreign import ccall unsafe "ls_operator_matvec_f64"
+  ls_operator_matvec_f64 :: Ptr () -> CULong -> Ptr Double -> Ptr Double -> IO CInt
+
 withInteractions :: [Interaction] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
 withInteractions xs func = withManyForeignPtr pointers func
   where
     pointers = (\(Interaction p) -> p) <$> xs
 
-mkOperator :: (MonadIO m, MonadThrow m) => SpinBasis -> [Interaction] -> m Operator
+mkOperator :: (MonadIO m, MonadThrow m) => SpinBasis -> [Interaction] -> m Operator'
 mkOperator (SpinBasis basis) terms = do
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
@@ -312,4 +319,7 @@ mkOperator (SpinBasis basis) terms = do
         then (,) <$> pure c <*> peek ptrPtr
         else pure (c, nullPtr)
   checkStatus code
-  fmap Operator . liftIO $ newForeignPtr ls_destroy_operator ptr
+  fmap Operator' . liftIO $ newForeignPtr ls_destroy_operator ptr
+
+fromOperator' :: Operator' -> PrimmeOperator Double
+fromOperator' op x y = undefined

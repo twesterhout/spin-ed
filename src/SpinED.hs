@@ -20,9 +20,22 @@ module SpinED
     getPhase,
     mkGroup,
     getGroupSize,
+    readConfig,
   )
 where
 
+import Colog
+  ( HasLog (..),
+    LogAction,
+    Message,
+    WithLog,
+    log,
+    richMessageAction,
+    pattern D,
+    pattern E,
+    pattern I,
+    pattern W,
+  )
 import Control.Exception.Safe (MonadThrow, throw)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
@@ -30,6 +43,8 @@ import Data.Complex
 import Data.Scientific (toRealFloat)
 import Data.Vector.Storable (MVector, Vector)
 import qualified Data.Vector.Storable as V
+import Data.Yaml (decodeFileWithWarnings)
+import Numeric.PRIMME
 import SpinED.Internal
 
 data SymmetrySpec = SymmetrySpec ![Int] !Bool !Int
@@ -42,35 +57,6 @@ instance FromJSON SymmetrySpec where
       <*> v .:! "flip" .!= False
       <*> v .: "sector"
 
-validatePermutation :: MonadThrow m => [Int] -> m [Int]
-validatePermutation indices = do
-  let n = length indices
-  when (n == 0) . throw . SpinEDException $
-    "permutation " <> show indices <> " is too short: the system must contain at least one spin"
-  when (n > 64) . throw . SpinEDException $
-    "permutation " <> show indices <> " is too long: exact diagonalization is not feasible "
-      <> "for systems larger than 64 spins"
-  when (any (< 0) indices) . throw . SpinEDException $
-    "permutation " <> show indices <> " contains negative indices"
-  let indices' = sort indices
-      i₀ = case (viaNonEmpty head indices') of
-        Just x -> x
-        Nothing -> error "n must be positive"
-  when (indices' /= [i₀ .. i₀ + n - 1]) . throw . SpinEDException $
-    "permutation " <> show indices <> " is not a valid permutation of [" <> show i₀ <> ".." <> show (i₀ + n - 1) <> "]"
-  return $ fmap (\x -> x - i₀) indices
-
-validateSector :: MonadThrow m => Int -> m Int
-validateSector sector
-  | sector >= 0 = return sector
-  | otherwise = throw . SpinEDException $ "invalid sector: " <> show sector <> "; expected a non-negative number"
-
-toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
-toSymmetry (SymmetrySpec p f s) = do
-  p' <- validatePermutation p
-  s' <- validateSector s
-  mkSymmetry p' f s'
-
 data BasisSpec = BasisSpec !Int !(Maybe Int) ![SymmetrySpec]
   deriving (Read, Show, Eq)
 
@@ -81,28 +67,11 @@ instance FromJSON BasisSpec where
       <*> v .:? "hamming_weight"
       <*> v .: "symmetries"
 
-toBasis :: (MonadIO m, MonadThrow m) => BasisSpec -> m SpinBasis
-toBasis (BasisSpec numberSpins hammingWeight symmetries) = do
-  when (numberSpins <= 0) . throw . SpinEDException $
-    "invalid number_spins: " <> show numberSpins <> "; expected a positive number"
-  when (numberSpins > 64) . throw . SpinEDException $
-    "invalid number_spins: " <> show numberSpins <> "; exact diagonalization is not feasible "
-      <> "for systems larger than 64 spins"
-  case hammingWeight of
-    Just m -> do
-      when (m < 0) . throw . SpinEDException $
-        "invalid hamming_weight: " <> show m <> "; expected a non-negative number"
-      when (m > numberSpins) . throw . SpinEDException $
-        "invalid hamming_weight: " <> show m <> "; Hamming weight cannot exceed the number of spins"
-    Nothing -> return ()
-  symmetryGroup <- mkGroup =<< mapM toSymmetry symmetries
-  mkBasis symmetryGroup numberSpins hammingWeight
-
-fromReal :: Num a => a -> Complex a
-fromReal x = x :+ 0
-
 instance FromJSON (Complex Double) where
   parseJSON (Number x) = pure . fromReal . toRealFloat $ x
+    where
+      fromReal :: Num a => a -> Complex a
+      fromReal x = x :+ 0
   parseJSON v@(Array xs) = case (toList xs) of
     [re, im] -> (:+) <$> parseJSON re <*> parseJSON im
     _ -> typeMismatch "Complex" v
@@ -117,36 +86,72 @@ instance FromJSON InteractionSpec where
       <$> v .: "matrix"
       <*> v .: "sites"
 
-validateMatrix :: MonadThrow m => Int -> [[Complex Double]] -> m (Vector (Complex Double))
-validateMatrix dim rows = do
-  when (length rows /= dim) . throw . SpinEDException $
-    "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
-  when (any ((/= dim) . length) rows) . throw . SpinEDException $
-    "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
-  return . V.fromList . concat $ rows
+data OperatorSpec = OperatorSpec !Text ![InteractionSpec]
+  deriving (Read, Show)
 
-validateSites :: MonadThrow m => [[Int]] -> m (Int, Vector Int)
-validateSites [] =
-  throw . SpinEDException $
-    "sites array should not be empty, if you do not wish to apply this "
-      <> "interaction to any sites, then do not include it at all"
-validateSites rows@(r : rs) = do
-  let !dim = length r
-  when (any ((/= dim) . length) rs) . throw . SpinEDException $
-    "invalid sites: " <> show rows <> "; expected an array of length-" <> show dim <> " tuples"
-  return (dim, V.fromList (concat rows))
+instance FromJSON OperatorSpec where
+  parseJSON = withObject "operator" $ \v ->
+    OperatorSpec
+      <$> v .: "name"
+      <*> v .: "terms"
+
+data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double
+  deriving (Read, Show)
+
+instance FromJSON ConfigSpec where
+  parseJSON = withObject "config" $ \v ->
+    ConfigSpec
+      <$> v .: "basis"
+      <*> v .: "hamiltonian"
+      <*> v .: "observables"
+      <*> v .:! "output" .!= "exact_diagonalization_result.h5"
+      <*> v .:! "number_vectors" .!= 1
+      <*> v .:! "precision" .!= 0.0
+
+toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
+toSymmetry (SymmetrySpec p f s) = mkSymmetry p f s
+
+toBasis :: (MonadIO m, MonadThrow m) => BasisSpec -> m SpinBasis
+toBasis (BasisSpec numberSpins hammingWeight symmetries) = do
+  -- We need to make sure we use "small" basis, otherwise we won't be able to
+  -- build a list of representatives later
+  when (numberSpins > 64) . throw . SpinEDException $
+    "invalid number_spins: " <> show numberSpins <> "; exact diagonalization is not feasible "
+      <> "for systems larger than 64 spins"
+  symmetryGroup <- mkGroup =<< mapM toSymmetry symmetries
+  mkBasis symmetryGroup numberSpins hammingWeight
 
 toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
 toInteraction (InteractionSpec matrix sites) = mkInteraction' matrix sites
 
-data OperatorSpec = OperatorSpec !Text ![InteractionSpec]
-  deriving (Read, Show)
+data Operator = Operator !Text !Operator'
 
-data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec]
-  deriving (Read, Show)
+toOperator :: (MonadIO m, MonadThrow m) => SpinBasis -> OperatorSpec -> m Operator
+toOperator basis (OperatorSpec name terms) =
+  Operator <$> pure name <*> (mkOperator basis =<< mapM toInteraction terms)
 
 data UserConfig = UserConfig
   { cBasis :: !SpinBasis,
     cHamiltonian :: !Operator,
-    cObservables :: ![Operator]
+    cObservables :: ![Operator],
+    cOutput :: Text,
+    cNumEvals :: Int,
+    cEps :: Double
   }
+
+toConfig :: (MonadIO m, MonadThrow m) => ConfigSpec -> m UserConfig
+toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps) = do
+  basis <- toBasis basisSpec
+  hamiltonian <- toOperator basis hamiltonianSpec
+  observables <- mapM (toOperator basis) observablesSpecs
+  return $ UserConfig basis hamiltonian observables output numEvals eps
+
+readConfig :: (WithLog env Message m, MonadIO m) => FilePath -> m ConfigSpec
+readConfig path = do
+  log I "Parsing config file..."
+  r <- liftIO $ decodeFileWithWarnings path
+  case r of
+    Left e -> liftIO $ throw e
+    Right (warnings, config) -> do
+      mapM_ (log W . show) warnings
+      return config
