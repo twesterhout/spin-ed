@@ -12,6 +12,8 @@ module SpinED
     Symmetry (..),
     SymmetryGroup (..),
     InteractionSpec (..),
+    toConfig,
+    diagonalize,
     toSymmetry,
     toInteraction,
     isRealInteraction,
@@ -121,6 +123,7 @@ toBasis (BasisSpec numberSpins hammingWeight symmetries) = do
   symmetryGroup <- mkGroup =<< mapM toSymmetry symmetries
   mkBasis symmetryGroup numberSpins hammingWeight
 
+
 toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
 toInteraction (InteractionSpec matrix sites) = mkInteraction' matrix sites
 
@@ -155,3 +158,14 @@ readConfig path = do
     Right (warnings, config) -> do
       mapM_ (log W . show) warnings
       return config
+
+diagonalize :: (WithLog env Message m, MonadIO m, MonadThrow m) => UserConfig -> m [(Double, Vector Double, Double)]
+diagonalize config = do
+  log I "Building a list of representatives..."
+  buildBasis (cBasis config)
+  dim <- getNumberStates . cBasis $ config
+  log I $ "Hilbert space dimension is " <> show dim
+  let primmeOptions = PrimmeOptions dim (cNumEvals config) PrimmeSmallest (cEps config)
+  log I "Diagonalizing..."
+  let primmeOperator = case (cHamiltonian config) of (Operator _ op) -> fromOperator' op
+  liftIO $ eigh primmeOptions primmeOperator

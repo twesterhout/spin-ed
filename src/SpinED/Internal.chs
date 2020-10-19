@@ -5,9 +5,11 @@
 module SpinED.Internal where
 
 import Control.Exception.Safe (MonadThrow, bracket, throw)
+import Data.Word (Word64)
 import Data.Complex
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Storable.Mutable as MV
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.ForeignPtr
@@ -151,6 +153,19 @@ getGroupSize (SymmetryGroup p) = unsafePerformIO $! withForeignPtr p $ \p' ->
   fromIntegral <$> ls_get_group_size p'
 {-# NOINLINE getGroupSize #-}
 
+data SpinBasisType = Thin | Full
+
+data SpinBasis' (t :: SpinBasisType) where
+  ThinSpinBasis :: ForeignPtr () -> SpinBasis' 'Thin
+  FullSpinBasis :: ForeignPtr () -> SpinBasis' 'Full
+
+getBasisPtr :: SpinBasis' t -> ForeignPtr ()
+getBasisPtr (ThinSpinBasis p) = p
+getBasisPtr (FullSpinBasis p) = p
+
+withBasis :: SpinBasis' t -> (Ptr () -> IO a) -> IO a
+withBasis x = withForeignPtr (getBasisPtr x)
+
 newtype SpinBasis = SpinBasis (ForeignPtr ())
 
 foreign import ccall unsafe "ls_create_spin_basis"
@@ -158,6 +173,11 @@ foreign import ccall unsafe "ls_create_spin_basis"
 
 foreign import ccall unsafe "&ls_destroy_spin_basis"
   ls_destroy_spin_basis :: FunPtr (Ptr () -> IO ())
+
+foreign import ccall safe "ls_build" ls_build :: Ptr () -> IO CInt
+
+foreign import ccall unsafe "ls_get_number_states"
+  ls_get_number_states :: Ptr () -> Ptr Word64 -> IO CInt
 
 mkBasis :: (MonadIO m, MonadThrow m) => SymmetryGroup -> Int -> Maybe Int -> m SpinBasis
 mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
@@ -178,6 +198,22 @@ mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
         else pure (c, nullPtr)
   checkStatus code
   fmap SpinBasis . liftIO $ newForeignPtr ls_destroy_spin_basis ptr
+
+buildBasis :: (MonadIO m, MonadThrow m) => SpinBasis -> m ()
+buildBasis (SpinBasis basis) = checkStatus =<< liftIO (withForeignPtr basis ls_build)
+
+-- Unsafe for now, but fixable with SpinBasis' GADT later on
+getNumberStates :: (MonadIO m, MonadThrow m) => SpinBasis -> m Int
+getNumberStates (SpinBasis p) = do
+  (code, count) <- liftIO $
+    withForeignPtr p $ \p' ->
+      alloca $ \numberStates' -> do
+        c <- ls_get_number_states p' numberStates'
+        if c == 0
+          then (,) <$> pure c <*> peek numberStates'
+          else pure (c, 0)
+  checkStatus code
+  return (fromIntegral count)
 
 newtype Interaction = Interaction (ForeignPtr ())
 
@@ -303,6 +339,9 @@ foreign import ccall unsafe "&ls_destroy_operator"
 foreign import ccall unsafe "ls_operator_matvec_f64"
   ls_operator_matvec_f64 :: Ptr () -> CULong -> Ptr Double -> Ptr Double -> IO CInt
 
+foreign import ccall unsafe "ls_operator_matmat_f64"
+  ls_operator_matmat_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> Word64 -> IO CInt
+
 withInteractions :: [Interaction] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
 withInteractions xs func = withManyForeignPtr pointers func
   where
@@ -322,4 +361,21 @@ mkOperator (SpinBasis basis) terms = do
   fmap Operator' . liftIO $ newForeignPtr ls_destroy_operator ptr
 
 fromOperator' :: Operator' -> PrimmeOperator Double
-fromOperator' op x y = undefined
+fromOperator' (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', blockSize') yStride y)
+  | size /= size' || blockSize /= blockSize' =
+    throw . SpinEDException $
+      "dimensions of x and y do not match: " <> show (size, blockSize) <> " != " <> show (size', blockSize')
+  | otherwise = do
+    liftIO $ print (size, blockSize)
+    (=<<) checkStatus . liftIO $
+      withForeignPtr op $ \opPtr ->
+        V.unsafeWith x $ \xPtr ->
+          MV.unsafeWith y $ \yPtr ->
+            ls_operator_matmat_f64
+              opPtr
+              (fromIntegral size)
+              (fromIntegral blockSize)
+              xPtr
+              (fromIntegral xStride)
+              yPtr
+              (fromIntegral yStride)

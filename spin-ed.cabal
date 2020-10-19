@@ -16,6 +16,7 @@ tested-with:         GHC == 8.8.4
 common common-options
   build-depends:       base ^>= 4.13.0.0
                      , relude
+                     , exceptions
                      , safe-exceptions
                      , mtl
                      , vector
@@ -51,6 +52,8 @@ common common-options
                        ScopedTypeVariables
                        OverloadedStrings
                        PatternSynonyms
+                       GADTs
+                       DataKinds
 
 library
   import:              common-options
