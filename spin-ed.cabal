@@ -62,9 +62,11 @@ library
   exposed-modules:     SpinED
                      , SpinED.Internal
   extra-libraries:     lattice_symmetries
-  include-dirs:        /home/tom/src/lattice-symmetries/include
-  extra-lib-dirs:      /home/tom/src/lattice-symmetries/build
-  ld-options:          -Wl,-rpath /home/tom/src/lattice-symmetries/build
+                     , stdc++
+                     , gomp
+  include-dirs:        /home/tom/src/spin-ed/third_party/lattice_symmetries/include
+  extra-lib-dirs:      /home/tom/src/spin-ed/third_party/lattice_symmetries/lib
+  ld-options:          -Wl,-rpath /home/tom/src/spin-ed/third_party/lattice_symmetries/lib
 
 executable spin-ed
   import:              common-options
