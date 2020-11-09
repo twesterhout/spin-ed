@@ -340,8 +340,11 @@ foreign import ccall unsafe "&ls_destroy_operator"
 foreign import ccall unsafe "ls_operator_matvec_f64"
   ls_operator_matvec_f64 :: Ptr () -> CULong -> Ptr Double -> Ptr Double -> IO CInt
 
-foreign import ccall unsafe "ls_operator_matmat_f64"
+foreign import ccall safe "ls_operator_matmat_f64"
   ls_operator_matmat_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> Word64 -> IO CInt
+
+foreign import ccall safe "ls_operator_matmat_f64"
+  ls_operator_expectation_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> IO CInt
 
 withInteractions :: [Interaction] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
 withInteractions xs func = withManyForeignPtr pointers func
@@ -379,13 +382,32 @@ inplaceApply (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', 
               (fromIntegral xStride)
               yPtr
               (fromIntegral yStride)
-    _ -> error "only Double is currently supported"
+    _ -> error "only Double datatype is currently supported"
 
 apply :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Block a)
 apply operator x@(Block dims@(rows, cols) _ _) = do
   (y :: MVector RealWorld a) <- MV.new (rows * cols)
   inplaceApply operator x $ MBlock dims rows y
   Block dims rows <$> V.unsafeFreeze y
+
+expectation :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Vector Double)
+expectation (Operator' op) (Block (size, blockSize) xStride x) =
+  case blasTag (Proxy @a) of
+    DoubleTag -> do
+      (out :: MVector RealWorld Double) <- MV.new blockSize
+      (checkStatus =<<) $
+        withForeignPtr op $ \opPtr ->
+          V.unsafeWith x $ \xPtr ->
+            MV.unsafeWith out $ \outPtr ->
+              ls_operator_expectation_f64
+                opPtr
+                (fromIntegral size)
+                (fromIntegral blockSize)
+                xPtr
+                (fromIntegral xStride)
+                outPtr
+      V.unsafeFreeze out
+    _ -> error "only Double datatype is currently supported"
 
 fromOperator' :: Operator' -> PrimmeOperator Double
 fromOperator' = inplaceApply
