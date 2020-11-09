@@ -15,6 +15,7 @@ module SpinED
     toConfig,
     diagonalize,
     toSymmetry,
+    toBasis,
     toInteraction,
     isRealInteraction,
     getSector,
@@ -123,7 +124,6 @@ toBasis (BasisSpec numberSpins hammingWeight symmetries) = do
   symmetryGroup <- mkGroup =<< mapM toSymmetry symmetries
   mkBasis symmetryGroup numberSpins hammingWeight
 
-
 toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
 toInteraction (InteractionSpec matrix sites) = mkInteraction' matrix sites
 
@@ -159,6 +159,9 @@ readConfig path = do
       mapM_ (log W . show) warnings
       return config
 
+-- batchedExpectationValue :: (WithLog env Message m, MonadIO m, MonadThrow m) => Operator -> Block a -> Vector Double
+-- batchedExpectationValue = undefined
+
 diagonalize :: (WithLog env Message m, MonadIO m, MonadThrow m) => UserConfig -> m [(Double, Vector Double, Double)]
 diagonalize config = do
   log I "Building a list of representatives..."
@@ -168,4 +171,6 @@ diagonalize config = do
   let primmeOptions = PrimmeOptions dim (cNumEvals config) PrimmeSmallest (cEps config)
   log I "Diagonalizing..."
   let primmeOperator = case (cHamiltonian config) of (Operator _ op) -> fromOperator' op
-  liftIO $ eigh primmeOptions primmeOperator
+  undefined
+
+-- liftIO $ eigh primmeOptions primmeOperator

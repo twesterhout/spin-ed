@@ -5,11 +5,12 @@
 module SpinED.Internal where
 
 import Control.Exception.Safe (MonadThrow, bracket, throw)
-import Data.Word (Word64)
+import Control.Monad.ST (RealWorld)
 import Data.Complex
-import Data.Vector.Storable (Vector)
+import Data.Vector.Storable (Vector, MVector)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as MV
+import Data.Word (Word64)
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.ForeignPtr
@@ -17,8 +18,8 @@ import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (withArrayLen)
 import Foreign.Marshal.Utils (fromBool)
 import Foreign.Ptr
-import Numeric.PRIMME
 import Foreign.Storable (Storable (..))
+import Numeric.PRIMME
 import System.IO.Unsafe (unsafePerformIO)
 
 #include <lattice_symmetries/lattice_symmetries.h>
@@ -360,14 +361,13 @@ mkOperator (SpinBasis basis) terms = do
   checkStatus code
   fmap Operator' . liftIO $ newForeignPtr ls_destroy_operator ptr
 
-fromOperator' :: Operator' -> PrimmeOperator Double
-fromOperator' (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', blockSize') yStride y)
+inplaceApply :: forall a. BlasDatatype a => Operator' -> Block a -> MBlock RealWorld a -> IO ()
+inplaceApply (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', blockSize') yStride y)
   | size /= size' || blockSize /= blockSize' =
     throw . SpinEDException $
       "dimensions of x and y do not match: " <> show (size, blockSize) <> " != " <> show (size', blockSize')
-  | otherwise = do
-    liftIO $ print (size, blockSize)
-    (=<<) checkStatus . liftIO $
+  | otherwise = case blasTag (Proxy @a) of
+    DoubleTag -> (checkStatus =<<) . liftIO $
       withForeignPtr op $ \opPtr ->
         V.unsafeWith x $ \xPtr ->
           MV.unsafeWith y $ \yPtr ->
@@ -379,3 +379,13 @@ fromOperator' (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size',
               (fromIntegral xStride)
               yPtr
               (fromIntegral yStride)
+    _ -> error "only Double is currently supported"
+
+apply :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Block a)
+apply operator x@(Block dims@(rows, cols) _ _) = do
+  (y :: MVector RealWorld a) <- MV.new (rows * cols)
+  inplaceApply operator x $ MBlock dims rows y
+  Block dims rows <$> V.unsafeFreeze y
+
+fromOperator' :: Operator' -> PrimmeOperator Double
+fromOperator' = inplaceApply
