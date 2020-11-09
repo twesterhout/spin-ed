@@ -8,10 +8,13 @@ license-file:        LICENSE
 author:              Tom Westerhout
 maintainer:          Tom Westerhout <14264576+twesterhout@users.noreply.github.com>
 copyright:           2020 Tom Westerhout
-build-type:          Simple
+build-type:          Custom
 extra-doc-files:     README.md
                      CHANGELOG.md
 tested-with:         GHC == 8.8.4
+
+custom-setup
+  setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
 
 common common-options
   build-depends:       base ^>= 4.13.0.0
@@ -49,6 +52,7 @@ common common-options
                        FlexibleContexts
                        FlexibleInstances
                        TypeFamilies
+                       TypeApplications
                        ScopedTypeVariables
                        OverloadedStrings
                        PatternSynonyms
