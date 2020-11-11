@@ -28,6 +28,7 @@ common common-options
                      , yaml
                      , co-log
                      , primme-hs
+                     , hdf5-hs
   
   mixins:              base hiding (Prelude)
                      , relude (Relude as Prelude)
@@ -58,6 +59,9 @@ common common-options
                        PatternSynonyms
                        GADTs
                        DataKinds
+                       MultiParamTypeClasses
+                       StandaloneDeriving
+                       GeneralizedNewtypeDeriving
 
 library
   import:              common-options

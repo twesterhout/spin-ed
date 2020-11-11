@@ -1,6 +1,6 @@
 resolver: lts-16.17
 extra-deps:
   - git: https://github.com/twesterhout/hdf5-hs.git
-    commit: 5cc2cc753c7027ffe494d7975b0baf2bb5a21002
+    commit: 791e15713f2848b3407649938dc66cb1d303e004
   - git: https://github.com/twesterhout/primme-hs.git
     commit: 40cfb9438b3d0d0a6a0f13eee0c604cca33d7796

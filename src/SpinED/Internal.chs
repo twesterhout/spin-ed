@@ -14,6 +14,7 @@ import Data.Word (Word64)
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.ForeignPtr
+import GHC.ForeignPtr (newConcForeignPtr)
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (withArrayLen)
 import Foreign.Marshal.Utils (fromBool)
@@ -180,6 +181,18 @@ foreign import ccall safe "ls_build" ls_build :: Ptr () -> IO CInt
 foreign import ccall unsafe "ls_get_number_states"
   ls_get_number_states :: Ptr () -> Ptr Word64 -> IO CInt
 
+foreign import ccall unsafe "ls_get_states"
+  ls_get_states :: Ptr (Ptr ()) -> Ptr () -> IO CInt
+
+foreign import ccall unsafe "ls_states_get_data"
+  ls_states_get_data :: Ptr () -> Ptr Word64
+
+foreign import ccall unsafe "ls_states_get_size"
+  ls_states_get_size :: Ptr () -> Word64
+
+foreign import ccall unsafe "ls_destroy_states"
+  ls_destroy_states :: Ptr () -> IO ()
+
 mkBasis :: (MonadIO m, MonadThrow m) => SymmetryGroup -> Int -> Maybe Int -> m SpinBasis
 mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
   when (numberSpins <= 0) . throw . SpinEDException $
@@ -202,6 +215,15 @@ mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
 
 buildBasis :: (MonadIO m, MonadThrow m) => SpinBasis -> m ()
 buildBasis (SpinBasis basis) = checkStatus =<< liftIO (withForeignPtr basis ls_build)
+
+basisGetStates :: MonadIO m => SpinBasis -> m (Vector Word64)
+basisGetStates (SpinBasis basis) = liftIO $
+    withForeignPtr basis $ \basisPtr -> do
+      rawPtr <- alloca $ \ptrPtr ->
+        ls_get_states ptrPtr basisPtr >>= checkStatus >> peek ptrPtr
+      V.unsafeFreeze =<< MV.unsafeFromForeignPtr0
+        <$> newConcForeignPtr (ls_states_get_data rawPtr) (ls_destroy_states rawPtr) 
+        <*> pure (fromIntegral . ls_states_get_size $ rawPtr)
 
 -- Unsafe for now, but fixable with SpinBasis' GADT later on
 getNumberStates :: (MonadIO m, MonadThrow m) => SpinBasis -> m Int
