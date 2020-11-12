@@ -17,12 +17,13 @@ custom-setup
   setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
 
 common common-options
-  build-depends:       base ^>= 4.13.0.0
+  build-depends:       base-noprelude ^>= 4.13.0.0
                      , relude
                      , exceptions
                      , safe-exceptions
                      , mtl
                      , vector
+                     , text
                      , aeson
                      , scientific
                      , yaml
@@ -30,8 +31,8 @@ common common-options
                      , primme-hs
                      , hdf5-hs
   
-  mixins:              base hiding (Prelude)
-                     , relude (Relude as Prelude)
+--  mixins:              base hiding (Prelude)
+--                     , relude (Relude as Prelude)
   
   ghc-options:         -Wall
                        -Wcompat
@@ -69,6 +70,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     SpinED
                      , SpinED.Internal
+                     , Prelude
   extra-libraries:     lattice_symmetries
                      , stdc++
                      , gomp

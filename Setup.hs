@@ -35,7 +35,7 @@ buildLibLatticeSymmetries _ flags = do
   -- useSystem = getCabalFlag "use_system_libprimme" flags
   -- unless useSystem $ do
   notice verbosity "Building liblattice_symmetries.a C library..."
-  rawSystemExit verbosity "./build_lattice_symmetries.sh" []
+  rawSystemExit verbosity "./build_lattice_symmetries.sh" ["--shared", "--verbose"]
   return emptyHookedBuildInfo
 
 updateExtraLibDirs :: ConfigFlags -> LocalBuildInfo -> IO LocalBuildInfo
