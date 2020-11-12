@@ -17,7 +17,7 @@ import Foreign.ForeignPtr
 import GHC.ForeignPtr (newConcForeignPtr)
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (withArrayLen)
-import Foreign.Marshal.Utils (fromBool)
+import Foreign.Marshal.Utils (toBool, fromBool)
 import Foreign.Ptr
 import Foreign.Storable (Storable (..))
 import Numeric.PRIMME
@@ -359,14 +359,14 @@ foreign import ccall unsafe "ls_create_operator"
 foreign import ccall unsafe "&ls_destroy_operator"
   ls_destroy_operator :: FunPtr (Ptr () -> IO ())
 
-foreign import ccall unsafe "ls_operator_matvec_f64"
-  ls_operator_matvec_f64 :: Ptr () -> CULong -> Ptr Double -> Ptr Double -> IO CInt
-
 foreign import ccall safe "ls_operator_matmat_f64"
   ls_operator_matmat_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> Word64 -> IO CInt
 
-foreign import ccall safe "ls_operator_matmat_f64"
+foreign import ccall safe "ls_operator_expectation_f64"
   ls_operator_expectation_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> IO CInt
+
+foreign import ccall unsafe "ls_operator_is_real"
+  ls_operator_is_real :: Ptr () -> IO CBool
 
 withInteractions :: [Interaction] -> (Int -> Ptr (Ptr ()) -> IO a) -> IO a
 withInteractions xs func = withManyForeignPtr pointers func
@@ -430,6 +430,9 @@ expectation (Operator' op) (Block (size, blockSize) xStride x) =
                 outPtr
       V.unsafeFreeze out
     _ -> error "only Double datatype is currently supported"
+
+isOperatorReal :: Operator' -> IO Bool
+isOperatorReal (Operator' op) = withForeignPtr op (ls_operator_is_real >=> return . toBool)
 
 fromOperator' :: Operator' -> PrimmeOperator Double
 fromOperator' = inplaceApply

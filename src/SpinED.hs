@@ -18,7 +18,6 @@ module SpinED
     runEnvT,
     toConfig,
     diagonalize,
-    diagonalize',
     buildRepresentatives,
     computeExpectations,
     toSymmetry,
@@ -55,6 +54,7 @@ import Data.Aeson.Types (typeMismatch)
 import Data.Complex
 import qualified Data.HDF5 as H5
 import Data.Scientific (toRealFloat)
+import Data.Text (toLower)
 import Data.Vector.Storable (MVector, Vector)
 import qualified Data.Vector.Storable as V
 import Data.Yaml (decodeFileWithWarnings)
@@ -110,7 +110,28 @@ instance FromJSON OperatorSpec where
       <$> v .: "name"
       <*> v .: "terms"
 
-data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double
+data Datatype
+  = DatatypeFloat32
+  | DatatypeFloat64
+  | DatatypeComplex64
+  | DatatypeComplex128
+  deriving (Read, Show, Eq)
+
+instance FromJSON Datatype where
+  parseJSON = withText "Datatype" $ \v ->
+    case (toLower v) of
+      "float32" -> undefined
+      "float64" -> undefined
+      "complex64" -> undefined
+      "complex128" -> undefined
+      _ ->
+        fail . toString $
+          "parsing Datatype failed, expected 'float32', "
+            <> "'float64', 'complex64' or 'complex128', but got '"
+            <> v
+            <> "'"
+
+data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double !Datatype
   deriving (Read, Show)
 
 instance FromJSON ConfigSpec where
@@ -122,6 +143,7 @@ instance FromJSON ConfigSpec where
       <*> v .:! "output" .!= "exact_diagonalization_result.h5"
       <*> v .:! "number_vectors" .!= 1
       <*> v .:! "precision" .!= 0.0
+      <*> v .:! "datatype" .!= DatatypeComplex128
 
 toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
 toSymmetry (SymmetrySpec p f s) = mkSymmetry p f s
@@ -152,9 +174,10 @@ data UserConfig = UserConfig
   { cBasis :: !SpinBasis,
     cHamiltonian :: !Operator,
     cObservables :: ![Operator],
-    cOutput :: Text,
-    cNumEvals :: Int,
-    cEps :: Double
+    cOutput :: !Text,
+    cNumEvals :: !Int,
+    cEps :: !Double,
+    cDatatype :: !Datatype
   }
 
 data Environment m = Environment
@@ -183,11 +206,11 @@ instance HasLog (Environment m) Message m where
   setLogAction action env = env {eLog = action}
 
 toConfig :: (MonadIO m, MonadThrow m) => ConfigSpec -> m UserConfig
-toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps) = do
+toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps dtype) = do
   basis <- toBasis basisSpec
   hamiltonian <- toOperator basis hamiltonianSpec
   observables <- mapM (toOperator basis) observablesSpecs
-  return $ UserConfig basis hamiltonian observables output numEvals eps
+  return $ UserConfig basis hamiltonian observables output numEvals eps dtype
 
 readConfig :: (WithLog env Message m, MonadIO m) => FilePath -> m ConfigSpec
 readConfig path = do
@@ -254,17 +277,17 @@ instance (Storable a, H5.KnownDatatype' a) => H5.ToBlob (Block a) a where
     | d₁ == stride = H5.Blob [d₁, d₂] v
     | otherwise = error "non-contiguous Blocks are not yet supported"
 
-diagonalize' ::
+diagonalize ::
   forall a m.
   ( HasCallStack,
     MonadIO m,
     MonadMask m,
-    PrimmeDatatype a,
+    BlasDatatype a,
     H5.KnownDatatype' a,
     H5.KnownDatatype' (BlasRealPart a)
   ) =>
   EnvT m (Vector (BlasRealPart a), Block a, Vector (BlasRealPart a))
-diagonalize' = do
+diagonalize = do
   hamiltonian <- asks (cHamiltonian . eConfig)
   dim <- getNumberStates =<< asks (cBasis . eConfig)
   numEvals <- asks (cNumEvals . eConfig)
@@ -279,21 +302,3 @@ diagonalize' = do
       writeDataset' group "eigenvectors" evecs
       writeDataset' group "residuals" rnorms
   return result
-
--- return $ zip ((\(Operator name _) -> name) <$> cObservables config) measurements
-
--- batchedExpectationValue :: (WithLog env Message m, MonadIO m, MonadThrow m) => Operator -> Block a -> Vector Double
--- batchedExpectationValue = undefined
-
-diagonalize :: (WithLog env Message m, MonadIO m, MonadThrow m) => UserConfig -> m [(Double, Vector Double, Double)]
-diagonalize config = do
-  log I "Building a list of representatives..."
-  buildBasis (cBasis config)
-  dim <- getNumberStates . cBasis $ config
-  log I $ "Hilbert space dimension is " <> show dim
-  let primmeOptions = PrimmeOptions dim (cNumEvals config) PrimmeSmallest (cEps config)
-  log I "Diagonalizing..."
-  let primmeOperator = case (cHamiltonian config) of (Operator _ op) -> fromOperator' op
-  undefined
-
--- liftIO $ eigh primmeOptions primmeOperator
