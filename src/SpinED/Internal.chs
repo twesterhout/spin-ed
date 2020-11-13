@@ -58,6 +58,7 @@ checkStatus c
     let c' = fromIntegral c
      in throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
 
+
 newtype Symmetry = Symmetry (ForeignPtr ())
 
 foreign import ccall unsafe "ls_create_symmetry"
@@ -359,11 +360,11 @@ foreign import ccall unsafe "ls_create_operator"
 foreign import ccall unsafe "&ls_destroy_operator"
   ls_destroy_operator :: FunPtr (Ptr () -> IO ())
 
-foreign import ccall safe "ls_operator_matmat_f64"
-  ls_operator_matmat_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> Word64 -> IO CInt
+foreign import ccall safe "ls_operator_matmat"
+  ls_operator_matmat :: Ptr () -> CInt -> Word64 -> Word64 -> Ptr () -> Word64 -> Ptr () -> Word64 -> IO CInt
 
-foreign import ccall safe "ls_operator_expectation_f64"
-  ls_operator_expectation_f64 :: Ptr () -> Word64 -> Word64 -> Ptr Double -> Word64 -> Ptr Double -> IO CInt
+foreign import ccall safe "ls_operator_expectation"
+  ls_operator_expectation :: Ptr () -> CInt -> Word64 -> Word64 -> Ptr () -> Word64 -> Ptr (Complex Double) -> IO CInt
 
 foreign import ccall unsafe "ls_operator_is_real"
   ls_operator_is_real :: Ptr () -> IO CBool
@@ -386,25 +387,32 @@ mkOperator (SpinBasis basis) terms = do
   checkStatus code
   fmap Operator' . liftIO $ newForeignPtr ls_destroy_operator ptr
 
+toCdatatype :: BlasDatatypeTag t -> CInt
+toCdatatype x = case x of
+  FloatTag -> 0
+  DoubleTag -> 1
+  ComplexFloatTag -> 2
+  ComplexDoubleTag -> 3
+
 inplaceApply :: forall a. BlasDatatype a => Operator' -> Block a -> MBlock RealWorld a -> IO ()
 inplaceApply (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', blockSize') yStride y)
   | size /= size' || blockSize /= blockSize' =
     throw . SpinEDException $
       "dimensions of x and y do not match: " <> show (size, blockSize) <> " != " <> show (size', blockSize')
-  | otherwise = case blasTag (Proxy @a) of
-    DoubleTag -> (checkStatus =<<) . liftIO $
-      withForeignPtr op $ \opPtr ->
-        V.unsafeWith x $ \xPtr ->
-          MV.unsafeWith y $ \yPtr ->
-            ls_operator_matmat_f64
+  | otherwise =
+    withForeignPtr op $ \opPtr ->
+      V.unsafeWith x $ \xPtr ->
+        MV.unsafeWith y $ \yPtr ->
+          checkStatus
+            =<< ls_operator_matmat
               opPtr
+              (toCdatatype . blasTag $ Proxy @a)
               (fromIntegral size)
               (fromIntegral blockSize)
-              xPtr
+              (castPtr xPtr)
               (fromIntegral xStride)
-              yPtr
+              (castPtr yPtr)
               (fromIntegral yStride)
-    _ -> error "only Double datatype is currently supported"
 
 apply :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Block a)
 apply operator x@(Block dims@(rows, cols) _ _) = do
@@ -412,27 +420,25 @@ apply operator x@(Block dims@(rows, cols) _ _) = do
   inplaceApply operator x $ MBlock dims rows y
   Block dims rows <$> V.unsafeFreeze y
 
-expectation :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Vector Double)
-expectation (Operator' op) (Block (size, blockSize) xStride x) =
-  case blasTag (Proxy @a) of
-    DoubleTag -> do
-      (out :: MVector RealWorld Double) <- MV.new blockSize
-      (checkStatus =<<) $
-        withForeignPtr op $ \opPtr ->
-          V.unsafeWith x $ \xPtr ->
-            MV.unsafeWith out $ \outPtr ->
-              ls_operator_expectation_f64
-                opPtr
-                (fromIntegral size)
-                (fromIntegral blockSize)
-                xPtr
-                (fromIntegral xStride)
-                outPtr
-      V.unsafeFreeze out
-    _ -> error "only Double datatype is currently supported"
+expectation :: forall a. BlasDatatype a => Operator' -> Block a -> IO (Vector (Complex Double))
+expectation (Operator' op) (Block (size, blockSize) xStride x) = do
+  (out :: MVector RealWorld (Complex Double)) <- MV.new blockSize
+  withForeignPtr op $ \opPtr ->
+    V.unsafeWith x $ \xPtr ->
+      MV.unsafeWith out $ \outPtr ->
+        checkStatus
+          =<< ls_operator_expectation
+            opPtr
+            (toCdatatype . blasTag $ Proxy @a)
+            (fromIntegral size)
+            (fromIntegral blockSize)
+            (castPtr xPtr)
+            (fromIntegral xStride)
+            outPtr
+  V.unsafeFreeze out
 
-isOperatorReal :: Operator' -> IO Bool
-isOperatorReal (Operator' op) = withForeignPtr op (ls_operator_is_real >=> return . toBool)
+isOperatorReal' :: Operator' -> IO Bool
+isOperatorReal' (Operator' op) = withForeignPtr op (ls_operator_is_real >=> return . toBool)
 
 fromOperator' :: Operator' -> PrimmeOperator Double
 fromOperator' = inplaceApply

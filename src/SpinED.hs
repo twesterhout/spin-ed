@@ -5,31 +5,45 @@
 --
 -- User-friendly exact diagonalization for spin systems
 module SpinED
-  ( SpinEDException (..),
-    LatticeSymmetriesException (..),
-    SymmetrySpec (..),
-    BasisSpec (..),
-    Symmetry (..),
-    SymmetryGroup (..),
-    InteractionSpec (..),
+  ( -- * For the app
     UserConfig (..),
     Environment (..),
     EnvT (..),
-    runEnvT,
+    readConfig,
     toConfig,
-    diagonalize,
+    runEnvT,
+    withDatatype,
+    version,
     buildRepresentatives,
+    diagonalize,
     computeExpectations,
+
+    -- * For testing
+    SpinEDException (..),
+    LatticeSymmetriesException (..),
+    SymmetrySpec (..),
+    BasisSpec (..),
+    InteractionSpec (..),
+    OperatorSpec (..),
+    ConfigSpec (..),
+    Symmetry,
+    SymmetryGroup,
+    SpinBasis,
+    Interaction,
+    Operator,
+    Operator',
+    Datatype (..),
+    BlasDatatype (..),
     toSymmetry,
     toBasis,
     toInteraction,
     isRealInteraction,
+    isOperatorReal,
     getSector,
     getPeriodicity,
     getPhase,
     mkGroup,
     getGroupSize,
-    readConfig,
   )
 where
 
@@ -60,6 +74,7 @@ import qualified Data.Vector.Storable as V
 import Data.Yaml (decodeFileWithWarnings)
 import Foreign.Storable (Storable)
 import Numeric.PRIMME
+import Paths_spin_ed (version)
 import SpinED.Internal
 
 data SymmetrySpec = SymmetrySpec ![Int] !Bool !Int
@@ -113,21 +128,16 @@ instance FromJSON OperatorSpec where
 data Datatype
   = DatatypeFloat32
   | DatatypeFloat64
-  | DatatypeComplex64
-  | DatatypeComplex128
   deriving (Read, Show, Eq)
 
 instance FromJSON Datatype where
   parseJSON = withText "Datatype" $ \v ->
     case (toLower v) of
-      "float32" -> undefined
-      "float64" -> undefined
-      "complex64" -> undefined
-      "complex128" -> undefined
+      "float32" -> return DatatypeFloat32
+      "float64" -> return DatatypeFloat64
       _ ->
         fail . toString $
-          "parsing Datatype failed, expected 'float32', "
-            <> "'float64', 'complex64' or 'complex128', but got '"
+          "parsing Datatype failed, expected either 'float32' or 'float64', but got '"
             <> v
             <> "'"
 
@@ -143,7 +153,7 @@ instance FromJSON ConfigSpec where
       <*> v .:! "output" .!= "exact_diagonalization_result.h5"
       <*> v .:! "number_vectors" .!= 1
       <*> v .:! "precision" .!= 0.0
-      <*> v .:! "datatype" .!= DatatypeComplex128
+      <*> v .:! "datatype" .!= DatatypeFloat64
 
 toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
 toSymmetry (SymmetrySpec p f s) = mkSymmetry p f s
@@ -212,10 +222,10 @@ toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals 
   observables <- mapM (toOperator basis) observablesSpecs
   return $ UserConfig basis hamiltonian observables output numEvals eps dtype
 
-readConfig :: (WithLog env Message m, MonadIO m) => FilePath -> m ConfigSpec
+readConfig :: (WithLog env Message m, MonadIO m) => Text -> m ConfigSpec
 readConfig path = do
   log I "Parsing config file..."
-  r <- liftIO $ decodeFileWithWarnings path
+  r <- liftIO $ decodeFileWithWarnings (toString path)
   case r of
     Left e -> liftIO $ throw e
     Right (warnings, config) -> do
@@ -261,8 +271,21 @@ buildRepresentatives = do
   basis <- asks (cBasis . eConfig)
   buildBasis basis
   asks eData >>= \file ->
-    withGroup' file basisPath $ \group ->
-      writeDataset' group "representatives" =<< basisGetStates basis
+    withGroup' file basisPath $ \g ->
+      writeDataset' g "representatives" =<< basisGetStates basis
+
+isOperatorReal :: MonadIO m => Operator -> m Bool
+isOperatorReal (Operator _ op) = liftIO $ isOperatorReal' op
+
+withDatatype ::
+  Bool ->
+  Datatype ->
+  (forall a. (H5.KnownDatatype' a, H5.KnownDatatype' (BlasRealPart a), BlasDatatype a) => Proxy a -> b) ->
+  b
+withDatatype True DatatypeFloat32 f = f (Proxy @Float)
+withDatatype True DatatypeFloat64 f = f (Proxy @Double)
+withDatatype False DatatypeFloat32 f = f (Proxy @(Complex Float))
+withDatatype False DatatypeFloat64 f = f (Proxy @(Complex Double))
 
 writeDataset' :: (HasCallStack, MonadIO m, MonadMask m, H5.ToBlob a b) => H5.Group -> Text -> a -> EnvT m ()
 writeDataset' group name x = do
@@ -278,7 +301,7 @@ instance (Storable a, H5.KnownDatatype' a) => H5.ToBlob (Block a) a where
     | otherwise = error "non-contiguous Blocks are not yet supported"
 
 diagonalize ::
-  forall a m.
+  forall a m proxy.
   ( HasCallStack,
     MonadIO m,
     MonadMask m,
@@ -286,8 +309,9 @@ diagonalize ::
     H5.KnownDatatype' a,
     H5.KnownDatatype' (BlasRealPart a)
   ) =>
+  proxy a ->
   EnvT m (Vector (BlasRealPart a), Block a, Vector (BlasRealPart a))
-diagonalize = do
+diagonalize _ = do
   hamiltonian <- asks (cHamiltonian . eConfig)
   dim <- getNumberStates =<< asks (cBasis . eConfig)
   numEvals <- asks (cNumEvals . eConfig)
@@ -297,8 +321,8 @@ diagonalize = do
       primmeOperator = inplaceApply . operatorObject $ hamiltonian
   result@(evals, evecs, rnorms) <- liftIO $ eigh primmeOptions primmeOperator
   asks eData >>= \file ->
-    withGroup' file hamiltonianPath $ \group -> do
-      writeDataset' group "eigenvalues" evals
-      writeDataset' group "eigenvectors" evecs
-      writeDataset' group "residuals" rnorms
+    withGroup' file hamiltonianPath $ \g -> do
+      writeDataset' g "eigenvalues" evals
+      writeDataset' g "eigenvectors" evecs
+      writeDataset' g "residuals" rnorms
   return result
