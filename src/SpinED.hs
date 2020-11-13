@@ -52,14 +52,8 @@ import Colog
     LogAction,
     Message,
     WithLog,
-    log,
     logInfo,
     logWarning,
-    richMessageAction,
-    pattern D,
-    pattern E,
-    pattern I,
-    pattern W,
   )
 import Colog.Monad (liftLogAction)
 import Control.Exception.Safe (MonadCatch, MonadMask, MonadThrow, throw)
@@ -69,8 +63,7 @@ import Data.Complex
 import qualified Data.HDF5 as H5
 import Data.Scientific (toRealFloat)
 import Data.Text (toLower)
-import Data.Vector.Storable (MVector, Vector)
-import qualified Data.Vector.Storable as V
+import Data.Vector.Storable (Vector)
 import Data.Yaml (decodeFileWithWarnings)
 import Foreign.Storable (Storable)
 import Numeric.PRIMME
@@ -78,7 +71,7 @@ import Paths_spin_ed (version)
 import SpinED.Internal
 
 data SymmetrySpec = SymmetrySpec ![Int] !Bool !Int
-  deriving (Read, Show, Eq)
+  deriving stock (Read, Show, Eq)
 
 instance FromJSON SymmetrySpec where
   parseJSON = withObject "symmetry" $ \v ->
@@ -88,7 +81,7 @@ instance FromJSON SymmetrySpec where
       <*> v .: "sector"
 
 data BasisSpec = BasisSpec !Int !(Maybe Int) ![SymmetrySpec]
-  deriving (Read, Show, Eq)
+  deriving stock (Read, Show, Eq)
 
 instance FromJSON BasisSpec where
   parseJSON = withObject "basis" $ \v ->
@@ -101,14 +94,14 @@ instance FromJSON (Complex Double) where
   parseJSON (Number x) = pure . fromReal . toRealFloat $ x
     where
       fromReal :: Num a => a -> Complex a
-      fromReal x = x :+ 0
+      fromReal x' = x' :+ 0
   parseJSON v@(Array xs) = case (toList xs) of
     [re, im] -> (:+) <$> parseJSON re <*> parseJSON im
     _ -> typeMismatch "Complex" v
   parseJSON v = typeMismatch "Complex" v
 
 data InteractionSpec = InteractionSpec ![[Complex Double]] ![[Int]]
-  deriving (Read, Show, Eq)
+  deriving stock (Read, Show, Eq)
 
 instance FromJSON InteractionSpec where
   parseJSON = withObject "interaction" $ \v ->
@@ -117,7 +110,7 @@ instance FromJSON InteractionSpec where
       <*> v .: "sites"
 
 data OperatorSpec = OperatorSpec !Text ![InteractionSpec]
-  deriving (Read, Show)
+  deriving stock (Read, Show)
 
 instance FromJSON OperatorSpec where
   parseJSON = withObject "operator" $ \v ->
@@ -128,7 +121,7 @@ instance FromJSON OperatorSpec where
 data Datatype
   = DatatypeFloat32
   | DatatypeFloat64
-  deriving (Read, Show, Eq)
+  deriving stock (Read, Show, Eq)
 
 instance FromJSON Datatype where
   parseJSON = withText "Datatype" $ \v ->
@@ -142,7 +135,7 @@ instance FromJSON Datatype where
             <> "'"
 
 data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double !Datatype
-  deriving (Read, Show)
+  deriving stock (Read, Show)
 
 instance FromJSON ConfigSpec where
   parseJSON = withObject "config" $ \v ->
@@ -197,14 +190,14 @@ data Environment m = Environment
   }
 
 newtype EnvT m a = EnvT {unEnvT :: ReaderT (Environment (EnvT m)) m a}
-  deriving (Functor, Applicative, Monad, MonadIO, MonadThrow, MonadCatch, MonadMask)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadThrow, MonadCatch, MonadMask)
+
+deriving newtype instance Monad m => MonadReader (Environment (EnvT m)) (EnvT m)
 
 runEnvT :: Monad m => EnvT m a -> Environment m -> m a
 runEnvT action env = runReaderT (unEnvT action) (liftEnv env)
   where
     liftEnv x = x {eLog = liftLogAction (eLog x)}
-
-deriving instance Monad m => MonadReader (Environment (EnvT m)) (EnvT m)
 
 instance MonadTrans EnvT where
   lift = EnvT . lift
@@ -224,12 +217,12 @@ toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals 
 
 readConfig :: (WithLog env Message m, MonadIO m) => Text -> m ConfigSpec
 readConfig path = do
-  log I "Parsing config file..."
+  logInfo "Parsing config file..."
   r <- liftIO $ decodeFileWithWarnings (toString path)
   case r of
     Left e -> liftIO $ throw e
     Right (warnings, config) -> do
-      mapM_ (log W . show) warnings
+      mapM_ (logWarning . show) warnings
       return config
 
 withGroup' :: (MonadIO m, MonadMask m) => H5.File -> Text -> (H5.Group -> m a) -> m a
@@ -257,7 +250,7 @@ computeExpectation (Operator name operator) x = do
   logInfo $ "Computing expectation values of " <> name <> "..."
   measurements <- liftIO $ expectation operator x
   asks eData >>= \file ->
-    withGroup' file observablesPath $ \group -> writeDataset' group name measurements
+    withGroup' file observablesPath $ \g -> writeDataset' g name measurements
 
 computeExpectations ::
   (MonadIO m, MonadMask m, BlasDatatype a) =>
@@ -288,12 +281,12 @@ withDatatype False DatatypeFloat32 f = f (Proxy @(Complex Float))
 withDatatype False DatatypeFloat64 f = f (Proxy @(Complex Double))
 
 writeDataset' :: (HasCallStack, MonadIO m, MonadMask m, H5.ToBlob a b) => H5.Group -> Text -> a -> EnvT m ()
-writeDataset' group name x = do
-  H5.exists group name >>= \alreadyExists -> when alreadyExists $ do
-    prefix <- H5.getName group
+writeDataset' g name x = do
+  H5.exists g name >>= \alreadyExists -> when alreadyExists $ do
+    prefix <- H5.getName g
     logWarning $ "Overwriting " <> prefix <> "/" <> name <> "..."
-    H5.delete group name
-  H5.writeDataset group name x
+    H5.delete g name
+  H5.writeDataset g name x
 
 instance (Storable a, H5.KnownDatatype' a) => H5.ToBlob (Block a) a where
   toBlob (Block (d₁, d₂) stride v)

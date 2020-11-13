@@ -7,32 +7,32 @@ module SpinED.Internal where
 import Control.Exception.Safe (MonadThrow, bracket, throw)
 import Control.Monad.ST (RealWorld)
 import Data.Complex
-import Data.Vector.Storable (Vector, MVector)
+import Data.Vector.Storable (MVector, Vector)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as MV
-import Data.Word (Word64)
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.ForeignPtr
-import GHC.ForeignPtr (newConcForeignPtr)
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (withArrayLen)
-import Foreign.Marshal.Utils (toBool, fromBool)
+import Foreign.Marshal.Utils (fromBool, toBool)
 import Foreign.Ptr
 import Foreign.Storable (Storable (..))
+import GHC.ForeignPtr (newConcForeignPtr)
 import Numeric.PRIMME
 import System.IO.Unsafe (unsafePerformIO)
+import Prelude hiding (group)
 
 #include <lattice_symmetries/lattice_symmetries.h>
 
 -- | Exceptions thrown when an error occurs in @liblattice_symmetries@.
 data LatticeSymmetriesException = LatticeSymmetriesException {eCode :: Int, eMessage :: Text}
-  deriving (Show)
+  deriving stock (Show)
 
 instance Exception LatticeSymmetriesException
 
 data SpinEDException = SpinEDException Text
-  deriving (Show)
+  deriving stock (Show)
 
 instance Exception SpinEDException
 
