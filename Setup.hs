@@ -32,10 +32,10 @@ main = defaultMainWithHooks hooks
 buildLibLatticeSymmetries :: Args -> ConfigFlags -> IO HookedBuildInfo
 buildLibLatticeSymmetries _ flags = do
   let verbosity = fromFlag $ configVerbosity flags
-  -- useSystem = getCabalFlag "use_system_libprimme" flags
-  -- unless useSystem $ do
+      buildShared = getCabalFlag "shared" flags
   notice verbosity "Building liblattice_symmetries.a C library..."
-  rawSystemExit verbosity "./build_lattice_symmetries.sh" ["--shared", "--verbose"]
+  rawSystemExit verbosity "./build_lattice_symmetries.sh" $
+    if buildShared then ["--shared"] else []
   return emptyHookedBuildInfo
 
 updateExtraLibDirs :: ConfigFlags -> LocalBuildInfo -> IO LocalBuildInfo
@@ -59,14 +59,14 @@ updateExtraLibDirs flags localBuildInfo = do
 
 copyLib :: ConfigFlags -> LocalBuildInfo -> FilePath -> IO ()
 copyLib flags _ libPref =
-  -- unless useSystem $ do
   do
-    notice verbosity $ "Installing liblattice_symmetries.a C library..."
+    notice verbosity $ "Installing lattice_symmetries C library..."
     installMaybeExecutableFile verbosity ("third_party/lattice_symmetries/lib" <> libName) (libPref <> libName)
   where
     verbosity = fromFlag $ configVerbosity flags
-    -- useSystem = getCabalFlag "use_system_libprimme" flags
-    libName = "/liblattice_symmetries.a"
+    libName = case getCabalFlag "shared" flags of
+      True -> "/liblattice_symmetries.so"
+      False -> "/liblattice_symmetries.a"
 
 copyLibLatticeSymmetries :: Args -> CopyFlags -> PackageDescription -> LocalBuildInfo -> IO ()
 copyLibLatticeSymmetries _ flags packageDescription localBuildInfo = copyLib config localBuildInfo libPref

@@ -4,3 +4,7 @@ extra-deps:
     commit: 791e15713f2848b3407649938dc66cb1d303e004
   - git: https://github.com/twesterhout/primme-hs.git
     commit: 606fad5828d0bdb5126360bf30a06a6e4959832e
+
+flags:
+  spin-ed:
+    shared: true

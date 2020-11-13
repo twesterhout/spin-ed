@@ -13,6 +13,10 @@ extra-doc-files:     README.md
                      CHANGELOG.md
 tested-with:         GHC == 8.8.4
 
+flag shared
+  description:       Build shared version of lattice_symmetries
+  default:           False
+
 custom-setup
   setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
 
@@ -64,6 +68,8 @@ common common-options
                        MultiParamTypeClasses
                        StandaloneDeriving
                        GeneralizedNewtypeDeriving
+                       DeriveAnyClass
+                       DerivingStrategies
 
 library
   import:              common-options
