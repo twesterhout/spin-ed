@@ -134,7 +134,7 @@ instance FromJSON Datatype where
             <> v
             <> "'"
 
-data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double !Datatype
+data ConfigSpec = ConfigSpec !BasisSpec !OperatorSpec ![OperatorSpec] !Text !Int !Double !Datatype !(Maybe Int) !(Maybe Int)
   deriving stock (Read, Show)
 
 instance FromJSON ConfigSpec where
@@ -147,6 +147,8 @@ instance FromJSON ConfigSpec where
       <*> v .:! "number_vectors" .!= 1
       <*> v .:! "precision" .!= 0.0
       <*> v .:! "datatype" .!= DatatypeFloat64
+      <*> v .:! "max_primme_basis_size"
+      <*> v .:! "max_primme_block_size"
 
 toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
 toSymmetry (SymmetrySpec p f s) = mkSymmetry p f s
@@ -180,7 +182,9 @@ data UserConfig = UserConfig
     cOutput :: !Text,
     cNumEvals :: !Int,
     cEps :: !Double,
-    cDatatype :: !Datatype
+    cDatatype :: !Datatype,
+    cMaxBasisSize :: !(Maybe Int),
+    cMaxBlockSize :: !(Maybe Int)
   }
 
 data Environment m = Environment
@@ -209,11 +213,11 @@ instance HasLog (Environment m) Message m where
   setLogAction action env = env {eLog = action}
 
 toConfig :: (MonadIO m, MonadThrow m) => ConfigSpec -> m UserConfig
-toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps dtype) = do
+toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps dtype maxBasisSize maxBlocksize) = do
   basis <- toBasis basisSpec
   hamiltonian <- toOperator basis hamiltonianSpec
   observables <- mapM (toOperator basis) observablesSpecs
-  return $ UserConfig basis hamiltonian observables output numEvals eps dtype
+  return $ UserConfig basis hamiltonian observables output numEvals eps dtype maxBasisSize maxBlocksize
 
 readConfig :: (WithLog env Message m, MonadIO m) => Text -> m ConfigSpec
 readConfig path = do
@@ -263,9 +267,11 @@ buildRepresentatives = do
   logInfo "Building a list of representatives..."
   basis <- asks (cBasis . eConfig)
   buildBasis basis
+  dim <- getNumberStates basis
   asks eData >>= \file ->
     withGroup' file basisPath $ \g ->
       writeDataset' g "representatives" =<< basisGetStates basis
+  logInfo $ "Hilbert space dimension is " <> show dim
 
 isOperatorReal :: MonadIO m => Operator -> m Bool
 isOperatorReal (Operator _ op) = liftIO $ isOperatorReal' op
@@ -305,12 +311,20 @@ diagonalize ::
   proxy a ->
   EnvT m (Vector (BlasRealPart a), Block a, Vector (BlasRealPart a))
 diagonalize _ = do
-  hamiltonian <- asks (cHamiltonian . eConfig)
-  dim <- getNumberStates =<< asks (cBasis . eConfig)
-  numEvals <- asks (cNumEvals . eConfig)
-  eps <- asks (cEps . eConfig)
+  config <- asks eConfig
+  let hamiltonian = cHamiltonian config
+      numEvals = cNumEvals config
+      eps = cEps config
+  dim <- getNumberStates (cBasis config)
   logInfo $ "Diagonalizing " <> operatorName hamiltonian <> "..."
-  let primmeOptions = PrimmeOptions dim numEvals PrimmeSmallest eps
+  let o₁ = Numeric.PRIMME.defaultOptions {pDim = dim, pNumEvals = numEvals, pTarget = PrimmeSmallest, pEps = eps}
+      o₂ = case cMaxBasisSize config of
+        Just x -> o₁ {pMaxBasisSize = x}
+        Nothing -> o₁
+      o₃ = case cMaxBlockSize config of
+        Just x -> o₂ {pMaxBlockSize = x}
+        Nothing -> o₂
+      primmeOptions = o₃
       primmeOperator = inplaceApply . operatorObject $ hamiltonian
   result@(evals, evecs, rnorms) <- liftIO $ eigh primmeOptions primmeOperator
   asks eData >>= \file ->
