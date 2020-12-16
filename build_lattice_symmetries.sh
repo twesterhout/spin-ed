@@ -29,6 +29,7 @@ if [ ! -d "lattice-symmetries" ]; then
 fi
 cd "lattice-symmetries"
 git pull origin master
+git submodule update --init --recursive
 
 if [ $BUILD -eq 1 ]; then
 	mkdir -p build && cd build

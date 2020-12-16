@@ -62,14 +62,12 @@ checkStatus c
 newtype Symmetry = Symmetry (ForeignPtr ())
 
 foreign import ccall unsafe "ls_create_symmetry"
-  ls_create_symmetry :: Ptr (Ptr ()) -> CUInt -> Ptr CUInt -> CBool -> CUInt -> IO CInt
+  ls_create_symmetry :: Ptr (Ptr ()) -> CUInt -> Ptr CUInt -> CUInt -> IO CInt
 
 foreign import ccall unsafe "&ls_destroy_symmetry"
   ls_destroy_symmetry :: FunPtr (Ptr () -> IO ())
 
 foreign import ccall unsafe "ls_get_sector" ls_get_sector :: Ptr () -> IO CUInt
-
-foreign import ccall unsafe "ls_get_flip" ls_get_flip :: Ptr () -> IO CBool
 
 foreign import ccall unsafe "ls_get_phase" ls_get_phase :: Ptr () -> IO CDouble
 
@@ -90,30 +88,26 @@ getPhase (Symmetry p) = unsafePerformIO $! withForeignPtr p $ \p' ->
   coerce <$> ls_get_phase p'
 {-# NOINLINE getPhase #-}
 
+mkObject :: (Ptr (Ptr ()) -> IO CInt) -> IO (Ptr ())
+mkObject f = alloca $ \ptrPtr -> f ptrPtr >>= checkStatus >> peek ptrPtr
+
 mkSymmetry ::
   (MonadIO m, MonadThrow m) =>
   -- | Permutation
   [Int] ->
-  -- | Whether to apply spin inversion
-  Bool ->
   -- | Symmetry sector
   Int ->
   m Symmetry
-mkSymmetry !permutation !invert !sector = do
+mkSymmetry !permutation !sector = do
   -- Make sure permutation and sector can be safely converted to unsigned
   -- representations. Everything else is checked by ls_create_symmetry
   when (any (< 0) permutation) . throw . SpinEDException $
     "invalid permutation: " <> show permutation <> "; indices must be non-negative"
   when (sector < 0) . throw . SpinEDException $
     "invalid sector: " <> show sector <> "; expected a non-negative number"
-  (code, ptr) <- liftIO $
-    alloca $ \ptrPtr -> do
-      c <- withArrayLen (fromIntegral <$> permutation) $ \n permutationPtr ->
-        ls_create_symmetry ptrPtr (fromIntegral n) permutationPtr (fromBool invert) (fromIntegral sector)
-      if c == 0
-        then (,) <$> pure c <*> peek ptrPtr
-        else pure (c, nullPtr)
-  checkStatus code
+  ptr <- liftIO . mkObject $ \ptrPtr ->
+    withArrayLen (fromIntegral <$> permutation) $ \n permutationPtr ->
+      ls_create_symmetry ptrPtr (fromIntegral n) permutationPtr (fromIntegral sector)
   fmap Symmetry . liftIO $ newForeignPtr ls_destroy_symmetry ptr
 
 newtype SymmetryGroup = SymmetryGroup (ForeignPtr ())
@@ -139,16 +133,15 @@ withSymmetries xs func = withManyForeignPtr pointers func
   where
     pointers = (\(Symmetry p) -> p) <$> xs
 
-mkGroup :: (MonadIO m, MonadThrow m) => [Symmetry] -> m SymmetryGroup
+mkGroup ::
+  (MonadIO m, MonadThrow m) =>
+  -- | Symmetry generators
+  [Symmetry] ->
+  m SymmetryGroup
 mkGroup !xs = do
-  (code, ptr) <- liftIO $
-    alloca $ \ptrPtr -> do
-      c <- withSymmetries xs $ \n xsPtr ->
-        ls_create_group ptrPtr (fromIntegral n) xsPtr
-      if c == 0
-        then (,) <$> pure c <*> peek ptrPtr
-        else pure (c, nullPtr)
-  checkStatus code
+  ptr <- liftIO . mkObject $ \ptrPtr ->
+    withSymmetries xs $ \n xsPtr ->
+      ls_create_group ptrPtr (fromIntegral n) xsPtr
   fmap SymmetryGroup . liftIO $ newForeignPtr ls_destroy_group ptr
 
 getGroupSize :: SymmetryGroup -> Int
@@ -172,7 +165,7 @@ withBasis x = withForeignPtr (getBasisPtr x)
 newtype SpinBasis = SpinBasis (ForeignPtr ())
 
 foreign import ccall unsafe "ls_create_spin_basis"
-  ls_create_spin_basis :: Ptr (Ptr ()) -> Ptr () -> CUInt -> CInt -> IO CInt
+  ls_create_spin_basis :: Ptr (Ptr ()) -> Ptr () -> CUInt -> CInt -> CInt -> IO CInt
 
 foreign import ccall unsafe "&ls_destroy_spin_basis"
   ls_destroy_spin_basis :: FunPtr (Ptr () -> IO ())
@@ -194,8 +187,18 @@ foreign import ccall unsafe "ls_states_get_size"
 foreign import ccall unsafe "ls_destroy_states"
   ls_destroy_states :: Ptr () -> IO ()
 
-mkBasis :: (MonadIO m, MonadThrow m) => SymmetryGroup -> Int -> Maybe Int -> m SpinBasis
-mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
+mkBasis ::
+  (MonadIO m, MonadThrow m) =>
+  -- | Symmetry group
+  SymmetryGroup ->
+  -- | Number of spins
+  Int ->
+  -- | Hamming weight
+  Maybe Int ->
+  -- | Spin inversion
+  Maybe Int ->
+  m SpinBasis
+mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight !spinInversion = do
   when (numberSpins <= 0) . throw . SpinEDException $
     "invalid number of spins: " <> show numberSpins <> "; expected a positive number"
   hammingWeight' <- case hammingWeight of
@@ -204,14 +207,15 @@ mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight = do
         "invalid Hamming weight: " <> show x <> "; expected a non-negative number"
       return $ fromIntegral x
     Nothing -> return (-1)
-  (code, ptr) <- liftIO $
-    alloca $ \ptrPtr -> do
-      c <- withForeignPtr group $ \groupPtr ->
-        ls_create_spin_basis ptrPtr groupPtr (fromIntegral numberSpins) hammingWeight'
-      if c == 0
-        then (,) <$> pure c <*> peek ptrPtr
-        else pure (c, nullPtr)
-  checkStatus code
+  spinInversion' <- case spinInversion of
+    Just x -> do
+      when (x /= 1 && x /= -1) . throw . SpinEDException $
+        "invalid value for spin inversion: " <> show x <> "; expected either -1 or +1"
+      return $ fromIntegral x
+    Nothing -> return 0
+  ptr <- liftIO . mkObject $ \ptrPtr ->
+    withForeignPtr group $ \groupPtr ->
+      ls_create_spin_basis ptrPtr groupPtr (fromIntegral numberSpins) hammingWeight' spinInversion'
   fmap SpinBasis . liftIO $ newForeignPtr ls_destroy_spin_basis ptr
 
 buildBasis :: (MonadIO m, MonadThrow m) => SpinBasis -> m ()
@@ -219,24 +223,20 @@ buildBasis (SpinBasis basis) = checkStatus =<< liftIO (withForeignPtr basis ls_b
 
 basisGetStates :: MonadIO m => SpinBasis -> m (Vector Word64)
 basisGetStates (SpinBasis basis) = liftIO $
-    withForeignPtr basis $ \basisPtr -> do
-      rawPtr <- alloca $ \ptrPtr ->
-        ls_get_states ptrPtr basisPtr >>= checkStatus >> peek ptrPtr
-      V.unsafeFreeze =<< MV.unsafeFromForeignPtr0
-        <$> newConcForeignPtr (ls_states_get_data rawPtr) (ls_destroy_states rawPtr) 
-        <*> pure (fromIntegral . ls_states_get_size $ rawPtr)
+  withForeignPtr basis $ \basisPtr -> do
+    rawPtr <- mkObject $ \ptrPtr -> ls_get_states ptrPtr basisPtr
+    V.unsafeFreeze =<< MV.unsafeFromForeignPtr0
+      <$> newConcForeignPtr (ls_states_get_data rawPtr) (ls_destroy_states rawPtr)
+      <*> pure (fromIntegral . ls_states_get_size $ rawPtr)
 
 -- Unsafe for now, but fixable with SpinBasis' GADT later on
 getNumberStates :: (MonadIO m, MonadThrow m) => SpinBasis -> m Int
 getNumberStates (SpinBasis p) = do
-  (code, count) <- liftIO $
+  count <- liftIO $
     withForeignPtr p $ \p' ->
       alloca $ \numberStates' -> do
-        c <- ls_get_number_states p' numberStates'
-        if c == 0
-          then (,) <$> pure c <*> peek numberStates'
-          else pure (c, 0)
-  checkStatus code
+        checkStatus =<< ls_get_number_states p' numberStates'
+        peek numberStates'
   return (fromIntegral count)
 
 newtype Interaction = Interaction (ForeignPtr ())

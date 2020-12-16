@@ -70,17 +70,16 @@ import Numeric.PRIMME
 import Paths_spin_ed (version)
 import SpinED.Internal
 
-data SymmetrySpec = SymmetrySpec ![Int] !Bool !Int
+data SymmetrySpec = SymmetrySpec ![Int] !Int
   deriving stock (Read, Show, Eq)
 
 instance FromJSON SymmetrySpec where
   parseJSON = withObject "symmetry" $ \v ->
     SymmetrySpec
       <$> v .: "permutation"
-      <*> v .:! "flip" .!= False
       <*> v .: "sector"
 
-data BasisSpec = BasisSpec !Int !(Maybe Int) ![SymmetrySpec]
+data BasisSpec = BasisSpec !Int !(Maybe Int) !(Maybe Int) ![SymmetrySpec]
   deriving stock (Read, Show, Eq)
 
 instance FromJSON BasisSpec where
@@ -88,6 +87,7 @@ instance FromJSON BasisSpec where
     BasisSpec
       <$> v .: "number_spins"
       <*> v .:? "hamming_weight"
+      <*> v .:? "spin_inversion"
       <*> v .: "symmetries"
 
 instance FromJSON (Complex Double) where
@@ -151,17 +151,19 @@ instance FromJSON ConfigSpec where
       <*> v .:! "max_primme_block_size"
 
 toSymmetry :: (MonadIO m, MonadThrow m) => SymmetrySpec -> m Symmetry
-toSymmetry (SymmetrySpec p f s) = mkSymmetry p f s
+toSymmetry (SymmetrySpec p s) = mkSymmetry p s
 
-toBasis :: (MonadIO m, MonadThrow m) => BasisSpec -> m SpinBasis
-toBasis (BasisSpec numberSpins hammingWeight symmetries) = do
+toBasis :: (WithLog env Message m, MonadIO m, MonadThrow m) => BasisSpec -> m SpinBasis
+toBasis (BasisSpec numberSpins hammingWeight spinInversion symmetries) = do
   -- We need to make sure we use "small" basis, otherwise we won't be able to
   -- build a list of representatives later
   when (numberSpins > 64) . throw . SpinEDException $
     "invalid number_spins: " <> show numberSpins <> "; exact diagonalization is not feasible "
       <> "for systems larger than 64 spins"
+  logInfo "Building symmetry group..."
   symmetryGroup <- mkGroup =<< mapM toSymmetry symmetries
-  mkBasis symmetryGroup numberSpins hammingWeight
+  logInfo $ "Symmetry group contains " <> show (getGroupSize symmetryGroup) <> " elements"
+  mkBasis symmetryGroup numberSpins hammingWeight spinInversion
 
 toInteraction :: (MonadIO m, MonadThrow m) => InteractionSpec -> m Interaction
 toInteraction (InteractionSpec matrix sites) = mkInteraction' matrix sites
@@ -206,13 +208,11 @@ runEnvT action env = runReaderT (unEnvT action) (liftEnv env)
 instance MonadTrans EnvT where
   lift = EnvT . lift
 
--- deriving instance MonadIO m => MonadIO (EnvT m)
-
 instance HasLog (Environment m) Message m where
   getLogAction = eLog
   setLogAction action env = env {eLog = action}
 
-toConfig :: (MonadIO m, MonadThrow m) => ConfigSpec -> m UserConfig
+toConfig :: (WithLog env Message m, MonadIO m, MonadThrow m) => ConfigSpec -> m UserConfig
 toConfig (ConfigSpec basisSpec hamiltonianSpec observablesSpecs output numEvals eps dtype maxBasisSize maxBlocksize) = do
   basis <- toBasis basisSpec
   hamiltonian <- toOperator basis hamiltonianSpec
