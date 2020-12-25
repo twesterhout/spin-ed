@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=SpinED
+Comment=App for exact diagonalization of spin systems
+Type=Application
+Terminal=false
+NoDisplay=true
+Exec=spin-ed
+Icon=SpinED
+Categories=Development;
+X-AppImage-Integrate=false
