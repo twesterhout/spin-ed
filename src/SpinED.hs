@@ -5,7 +5,7 @@
 --
 -- User-friendly exact diagonalization for spin systems
 module SpinED
-  ( -- * For the app
+  ( -- * For the app.
     UserConfig (..),
     Environment (..),
     EnvT (..),

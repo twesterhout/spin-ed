@@ -12,6 +12,7 @@ build-type:          Custom
 extra-doc-files:     README.md
                      CHANGELOG.md
 tested-with:         GHC == 8.8.4
+extra-source-files:  build_lattice_symmetries.sh
 
 flag shared
   description:       Build shared version of lattice_symmetries
@@ -34,9 +35,6 @@ common common-options
                      , co-log
                      , primme-hs
                      , hdf5-hs
-  
---  mixins:              base hiding (Prelude)
---                     , relude (Relude as Prelude)
   
   ghc-options:         -Wall
                        -Wcompat
@@ -82,21 +80,20 @@ library
   extra-libraries:     lattice_symmetries
                      , stdc++
                      , gomp
-  include-dirs:        /home/tom/src/spin-ed/third_party/lattice_symmetries/include
-  extra-lib-dirs:      /home/tom/src/spin-ed/third_party/lattice_symmetries/lib
-  ld-options:          -Wl,-rpath /home/tom/src/spin-ed/third_party/lattice_symmetries/lib
+  ghc-options:         -O2
+                       -fexpose-all-unfoldings
+                       -fspecialise-aggressively
 
 executable spin-ed
   import:              common-options
   hs-source-dirs:      app
   main-is:             Main.hs
   build-depends:       spin-ed
-                     , co-log
-                     , hdf5-hs
                      , optparse-applicative
-  ghc-options:         -threaded
+  ghc-options:         -O2
+                       -fexpose-all-unfoldings
+                       -fspecialise-aggressively
                        -rtsopts
-                       -with-rtsopts=-N
 
 test-suite spin-ed-test
   import:              common-options

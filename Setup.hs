@@ -34,8 +34,8 @@ buildLibLatticeSymmetries _ flags = do
   let verbosity = fromFlag $ configVerbosity flags
       buildShared = getCabalFlag "shared" flags
   notice verbosity "Building liblattice_symmetries.a C library..."
-  rawSystemExit verbosity "./build_lattice_symmetries.sh" $
-    if buildShared then ["--shared"] else []
+  rawSystemExit verbosity "bash" $
+    ["build_lattice_symmetries.sh"] <> (if buildShared then ["--shared"] else [])
   return emptyHookedBuildInfo
 
 updateExtraLibDirs :: ConfigFlags -> LocalBuildInfo -> IO LocalBuildInfo
