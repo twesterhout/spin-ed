@@ -29,7 +29,7 @@ WORKDIR="$PWD/third_party/build"
 mkdir -p "$WORKDIR" && cd "$WORKDIR"
 if [ ! -d "lattice-symmetries" ]; then
 	echo "Downloading lattice-symmetries..."
-	git clone --depth 1 git@github.com:twesterhout/lattice-symmetries
+	git clone --depth 1 https://github.com/twesterhout/lattice-symmetries.git
 fi
 cd "lattice-symmetries"
 git pull origin master
