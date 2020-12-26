@@ -35,16 +35,16 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends libopenblas-dev libhdf5-dev
+        sudo apt-get install -y --no-install-recommends ninja-build libopenblas-dev libhdf5-dev
 
     - name: Build
       run: |
         cabal v2-update
-        cabal v2-build --enable-tests --enable-benchmarks
+        cabal v2-build --dependencies-only
 
-    - name: Test
-      run: |
-        cabal v2-test --enable-tests --test-show-details=direct
+        # - name: Test
+        #   run: |
+        #     cabal v2-test --enable-tests --test-show-details=direct
 
     - name: Create AppImage
       if: ${{ matrix.ghc }} == "8.8.4"
