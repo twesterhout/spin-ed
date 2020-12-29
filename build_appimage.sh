@@ -49,11 +49,13 @@ build_app() {
 	}
 	declare -r installdir="$1"
 	# Set GHC version
-	ghcup set ghc 8.8.4
-	ghc --version
+	# ghcup set ghc 8.8.4
+	# ghc --version
 	# Build the package
 	cd "$PROJECT_DIR"
-	cabal v2-install --installdir="$installdir" --install-method=copy
+	cabal v2-install exe:spin-ed \
+		--disable-tests --disable-benchmarks \
+		--installdir="$installdir" --install-method=copy
 	APP="$installdir/spin-ed"
 }
 
@@ -75,6 +77,7 @@ create_appimage() {
 		--icon-file="resources/SpinED.png" \
 		--output appimage
 	mv -v SpinED-$version-x86_64.AppImage SpinED-x86_64.AppImage
+	rm -r AppDir/
 }
 
 while [[ $# -gt 0 ]]; do

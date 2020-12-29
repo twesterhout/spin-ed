@@ -33,7 +33,7 @@ buildLibLatticeSymmetries :: Args -> ConfigFlags -> IO HookedBuildInfo
 buildLibLatticeSymmetries _ flags = do
   let verbosity = fromFlag $ configVerbosity flags
       buildShared = getCabalFlag "shared" flags
-  notice verbosity "Building liblattice_symmetries.a C library..."
+  notice verbosity "Building lattice_symmetries C library..."
   rawSystemExit verbosity "bash" $
     ["build_lattice_symmetries.sh"] <> (if buildShared then ["--shared"] else [])
   return emptyHookedBuildInfo
@@ -75,7 +75,9 @@ copyLibLatticeSymmetries _ flags packageDescription localBuildInfo = copyLib con
     config = configFlags localBuildInfo
 
 cleanLibLatticeSymmetries :: Args -> CleanFlags -> PackageDescription -> () -> IO ()
-cleanLibLatticeSymmetries _ flags _ _ = rawSystemExit verbosity "./build_lattice_symmetries.sh" ["--clean"]
+cleanLibLatticeSymmetries _ flags _ _ =
+  rawSystemExit verbosity "bash" $
+    ["./build_lattice_symmetries.sh", "--clean"]
   where
     verbosity = fromFlag $ cleanVerbosity flags
 

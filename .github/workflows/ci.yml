@@ -8,45 +8,59 @@ on:
 
 jobs:
   build:
-    name: ghc ${{ matrix.ghc }}
-    runs-on: ubuntu-latest
+    name: Building on ${{ matrix.os }} with ghc-${{ matrix.ghc }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - cabal: "3.0.0.0"
+          - os: ubuntu-latest
+            cabal: "3.0.0.0"
             ghc: "8.8.4"
 
     steps:
     - uses: actions/checkout@v2
-      if: github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.ref == 'refs/heads/master'
-
     - uses: actions/setup-haskell@v1
       name: Setup Haskell
       with:
         ghc-version: ${{ matrix.ghc }}
         cabal-version: ${{ matrix.cabal }}
-
     - uses: actions/cache@v1
       name: Cache ~/.cabal/store
       with:
         path: ~/.cabal/store
         key: ${{ runner.os }}-${{ matrix.ghc }}-cabal
-
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends ninja-build libopenblas-dev libhdf5-dev
-
     - name: Build
       run: |
         cabal v2-update
-        cabal v2-build --dependencies-only
-
-        # - name: Test
-        #   run: |
-        #     cabal v2-test --enable-tests --test-show-details=direct
-
-    - name: Create AppImage
-      if: ${{ matrix.ghc }} == "8.8.4"
+        cabal v2-build --enable-tests
+    - name: Test
       run: |
-        echo Hello world!
+        cabal v2-test --enable-tests --test-show-details=direct
+
+  appimage-x86_64:
+    name: Ubuntu AppImage build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-haskell@v1
+        name: Setup Haskell
+        with:
+          ghc-version: "8.8.4"
+          cabal-version: "3.0.0.0"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libopenblas-dev libhdf5-dev
+      - name: Create AppImage
+        run: |
+          cabal v2-update
+          ./build_appimage.sh
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: AppImage x86_64
+          path: SpinED*.AppImage*
