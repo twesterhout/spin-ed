@@ -45,22 +45,27 @@ jobs:
     name: Ubuntu AppImage build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-haskell@v1
-        name: Setup Haskell
-        with:
-          ghc-version: "8.8.4"
-          cabal-version: "3.0.0.0"
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build libopenblas-dev libhdf5-dev
-      - name: Create AppImage
-        run: |
-          cabal v2-update
-          ./build_appimage.sh
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: AppImage x86_64
-          path: SpinED*.AppImage*
+    - uses: actions/checkout@v2
+    - uses: actions/setup-haskell@v1
+      name: Setup Haskell
+      with:
+        ghc-version: "8.8.4"
+        cabal-version: "3.0.0.0"
+    - uses: actions/cache@v1
+      name: Cache ~/.cabal/store
+      with:
+        path: ~/.cabal/store
+        key: ubuntu-latest-8.8.4-cabal
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends ninja-build libopenblas-dev libhdf5-dev
+    - name: Create AppImage
+      run: |
+        cabal v2-update
+        ./build_appimage.sh
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: AppImage x86_64
+        path: SpinED*.AppImage*

@@ -29,6 +29,7 @@ install_linuxdeploy() {
 	[[ -n $LINUXDEPLOY ]] && return 0
 	if ! which linuxdeploy; then
 		echo "Installing linuxdeploy into ${PROJECT_DIR}/third_party..."
+		mkdir -p "${PROJECT_DIR}/third_party"
 		LINUXDEPLOY="${PROJECT_DIR}/third_party/linuxdeploy-x86_64.AppImage"
 		if [[ ! -f "$LINUXDEPLOY" ]]; then
 			wget -O "$LINUXDEPLOY" \
