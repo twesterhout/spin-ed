@@ -32,7 +32,7 @@ install_linuxdeploy() {
 		mkdir -p "${PROJECT_DIR}/third_party"
 		LINUXDEPLOY="${PROJECT_DIR}/third_party/linuxdeploy-x86_64.AppImage"
 		if [[ ! -f "$LINUXDEPLOY" ]]; then
-			wget -O "$LINUXDEPLOY" \
+			wget -O "$LINUXDEPLOY" --no-verbose \
 				"https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
 			chmod +x "$LINUXDEPLOY"
 		else
@@ -54,6 +54,7 @@ build_app() {
 	# ghc --version
 	# Build the package
 	cd "$PROJECT_DIR"
+	cabal v2-build
 	cabal v2-install exe:spin-ed \
 		--disable-tests --disable-benchmarks \
 		--installdir="$installdir" --install-method=copy
