@@ -10,7 +10,6 @@ maintainer:          Tom Westerhout <14264576+twesterhout@users.noreply.github.c
 copyright:           2020 Tom Westerhout
 build-type:          Custom
 extra-doc-files:     README.md
-                     CHANGELOG.md
 tested-with:         GHC == 8.8.4
 extra-source-files:  build_lattice_symmetries.sh
 
