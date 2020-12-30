@@ -1,0 +1,113 @@
+# Description of the Hilbert space.
+basis:
+  # Specify the number of spins in the system.
+  number_spins: <integer>
+  # (OPTIONAL) Restrict the Hilbert space to spin configurations with a
+  # particular Hamming weight. (Hamming weight is the number of spin-ups).
+  # Omit this field if you do not wish to restrict the Hilbert space to a
+  # sector with particular magnetization.
+  hamming_weight: 5
+  # Specify lattice symmetry generators.
+  #
+  # For each generator, we have to specify two things: how it permutes
+  # lattice sites, and how it affects the phase of the wavefunction.
+  #
+  # For example, the following specifies translation symmetry for 10-spin chain
+  # with eigenvalue ‐1:
+  #
+  #   symmetries:
+  #     - permutation: [1, 2, 3, 4, 5, 6, 8, 9, 0]
+  #       sector: 5
+  #
+  # If you do not wish to use any lattice symmetries, specify an empty list:
+  #
+  #   symmetries: []
+  symmetries:
+      # Specify the permutation:
+    - permutation: <list-of-integer>
+      # Specify the sector.
+      #
+      # Each permutation P has a finite periodicity N which is the minimal
+      # positive integer such that Pᴺ is identity. It then follows that
+      # eigenvalues of P are exp(2πik/N) for k ∈ {0, ..., N-1}. Thus to specify
+      # an eigenvalue it is sufficient to choose k. This is exactly the meaning
+      # of the field sector.
+      sector: <integer>
+    - ...
+  # (OPTIONAL) Specify global spin inversion symmetry.
+  #
+  # Set spin_inversion to 1 to indicate that the system is invariant upon
+  # global spin inversion. Set it to -1 to indicate that a the wavefunction
+  # changes sign. Leave this field out if your system does not have spin
+  # inversion symmetry.
+  spin_inversion: <integer>
+# Description of the Hamiltonian.
+hamiltonian:
+  # Give your Hamiltonian a name.
+  #
+  # Example:
+  #
+  #   name: "Heisenberg Hamiltonian"
+  name: <string>
+  # A list of terms in the Hamiltonian. Full Hamiltonian is the sum of all terms.
+  #
+  # Each term specifies a particular type of interaction. Currently, 1-, 2-,
+  # 3-, and 4-point interactions are supported. Which means that the
+  # interaction is given by a 2ⁿ x 2ⁿ matrix where n is either 1, 2, 3, or 4.
+  terms:
+    # Defines the type of interaction.
+    #
+    # For example, the following specifies Heisenberg exchange interaction
+    # σ₁σ₁ + σ₂σ₂ + σ₃σ₃:
+    #
+    #   - matrix: [[1,  0,  0,  0],
+    #              [0, -1,  2,  0],
+    #              [0,  2, -1,  0],
+    #              [0,  0,  0,  1]]
+    #
+    # It is also possible to use complex numbers. Complex numbers are
+    # represented by lists. I.e. to specify a + ib use [a, b].
+    - matrix: <matrix-of-complex>
+      # Specify to which sites the interaction should be applied. Depending on
+      # the dimension of the matrix, it should be a list of either 1, 2, 3, or
+      # 4 tuples.
+      #
+      # For example, the following specifies interaction between nearest
+      # neighbours in a 4-spin chain:
+      # 
+      #   sites: [[0, 1], [1, 2], [2, 3], [3, 0]]
+      sites: <list-of-list-of-integer>
+# A list of observables.
+#
+# Each observable is a hermitian operator which is specified in the exact same
+# way as the Hamiltonian. Expectation values of these operators will be
+# evaluated on Hamiltonian eigenvectors after the diagonalization. Use it to
+# compute various correlation functions or order parameters.
+#
+# If you do not wish to compute any observables except for energy, specify an empty list:
+#
+#   observables: []
+observables: <list-of-operator>
+# (OPTIONAL) Number of lowest-energy eigenvectors to compute. If not specified,
+# only the ground state will be computed.
+number_vectors: <integer>
+# (OPTIONAL) Datatype to use for the computation. Possible values include
+# 'float32', 'float64', 'complex64', and 'complex128'. If not specified,
+# 'float64' will be used if your Hamiltonian is real, and 'complex128' if it's
+# complex.
+#
+# Note that using 'float32' instead of 'float64' will not speed-up the
+# matrix-vector products, but will reduce the memory usage.
+datatype: <string>
+# Specify the name of the output hdf5 file where the results should be saved.
+#
+# For example:
+#
+#  output: "data/heisenberg_chain_10.h5"
+output: <string>
+##########
+## Advanced stuff (do not use unless you know what you're doing!)
+##########
+precision: <float>
+max_primme_block_size: <integer>
+max_primme_basis_size: <integer>

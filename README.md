@@ -100,7 +100,8 @@ contains various usage examples.
 ## Contributing and support
 
 If you use this package for your research and have questions or suggestions,
-please, don't hesitate to contact me on Github or email.
+please, don't hesitate to contact me on Github or
+[email](https://www.ru.nl/tcm/about-us/phd-students/westerhout/).
 
 Also, if the fact that most code here is written in Haskell doesn't scare you,
 feel free to create a pull request implementing new features or fixing bugs!
