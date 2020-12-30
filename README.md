@@ -7,10 +7,11 @@
 User-friendly exact diagonalization package for quantum many-body systems.
 
 
-## Installing
+## 🔧 Installing
 
-We provide pre-built AppImages for Linux. Go to [Releases](...) page, download
-the AppImage to your location of choice, and make it executable. And that's it!
+We provide pre-built [AppImage](https://appimage.org/)s for Linux. Go to
+[Releases](https://github.com/twesterhout/spin-ed/releases) page, download the
+AppImage to your location of choice, and make it executable. That's it! 🥳
 
 Or, if you prefer the command line:
 ```sh
@@ -19,16 +20,73 @@ chmod +x SpinED-x86_64.AppImage
 ```
 
 
-## Usage
+## 📝 Usage
 
+Using `SpinED` is quite simple. After installing the AppImage just feed it your
+input yaml file, and that's it. For example:
 
-### Specifying symmetries
-
-The general syntax for specifying a symmetry in the input YAML file is the
-following:
-
-```yaml
-permutation: <list-of-integers>
-sector: <integer>
+```sh
+./SpinED-x86_64.AppImage my_system.yml
 ```
 
+where `my_system.yml` looks like this:
+
+```yaml
+basis:
+  number_spins: 4
+  symmetries: []
+hamiltonian:
+  name: "Heisenberg Hamiltonian"
+  terms:
+    - matrix: [[1,  0,  0,  0],
+               [0, -1,  2,  0],
+               [0,  2, -1,  0],
+               [0,  0,  0,  1]]
+      sites: [[0, 1], [1, 2], [2, 3], [3, 0]]
+observables: []
+```
+
+This will create a file `exact_diagonalization_result.h5` which contains the
+ground state of the Hamiltonian.
+
+```sh
+$ h5dump -H exact_diagonalization_result.h5
+HDF5 "exact_diagonalization_result.h5" {
+GROUP "/" {
+   GROUP "basis" {
+      DATASET "representatives" {
+         DATATYPE  H5T_STD_U64LE
+         DATASPACE  SIMPLE { ( 16 ) / ( 16 ) }
+      }
+   }
+   GROUP "hamiltonian" {
+      DATASET "eigenvalues" {
+         DATATYPE  H5T_IEEE_F64LE
+         DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+      }
+      DATASET "eigenvectors" {
+         DATATYPE  H5T_IEEE_F64LE
+         DATASPACE  SIMPLE { ( 16, 1 ) / ( 16, 1 ) }
+      }
+      DATASET "residuals" {
+         DATATYPE  H5T_IEEE_F64LE
+         DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+      }
+   }
+}
+}
+```
+
+And we can check that it computed the correct energy:
+```sh
+$ h5dump -d /hamiltonian/eigenvalues exact_diagonalization_result.h5
+HDF5 "exact_diagonalization_result.h5" {
+DATASET "/hamiltonian/eigenvalues" {
+   DATATYPE  H5T_IEEE_F64LE
+   DATASPACE  SIMPLE { ( 1 ) / ( 1 ) }
+   DATA {
+   (0): -8
+   }
+}
+}
+```

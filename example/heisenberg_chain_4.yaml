@@ -1,0 +1,12 @@
+basis:
+  number_spins: 4
+  symmetries: []
+hamiltonian:
+  name: "Heisenberg Hamiltonian"
+  terms:
+    - matrix: [[1,  0,  0,  0],
+               [0, -1,  2,  0],
+               [0,  2, -1,  0],
+               [0,  0,  0,  1]]
+      sites: [[0, 1], [1, 2], [2, 3], [3, 0]]
+observables: []
