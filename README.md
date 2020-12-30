@@ -1,25 +1,25 @@
-**WORK IN PROGRESS**
+# SpinED
 
-# spin-ed
-
-[![Hackage](https://img.shields.io/hackage/v/spin-ed.svg?logo=haskell)](https://hackage.haskell.org/package/spin-ed)
-[![Stackage Lts](http://stackage.org/package/spin-ed/badge/lts)](http://stackage.org/lts/package/spin-ed)
-[![Stackage Nightly](http://stackage.org/package/spin-ed/badge/nightly)](http://stackage.org/nightly/package/spin-ed)
+[![GitHub CI](https://github.com/twesterhout/spin-ed/workflows/CI/badge.svg)](https://github.com/twesterhout/spin-ed/actions)
+[![GitHub Release](https://img.shields.io/github/v/release/:user/:repo?include_prereleases)](https://github.com/twesterhout/spin-ed/releases)
 [![BSD-3-Clause license](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-User-friendly exact diagonalization for spin systems.
+User-friendly exact diagonalization package for quantum many-body systems.
 
 
 ## Installing
 
 We provide pre-built AppImages for Linux. Go to [Releases](...) page, download
-the AppImage to your location of choice, and make it executable. That's it!
+the AppImage to your location of choice, and make it executable. And that's it!
 
 Or, if you prefer the command line:
-```bash
-wget https://github.com/twesterhout/spin-ed/...
+```sh
+wget https://github.com/twesterhout/spin-ed/releases/download/continuous/SpinED-x86_64.AppImage
 chmod +x SpinED-x86_64.AppImage
 ```
+
+
+## Usage
 
 
 ### Specifying symmetries

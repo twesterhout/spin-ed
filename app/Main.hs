@@ -35,7 +35,13 @@ main = runApp =<< execParser options
     options =
       info
         (settings <**> helper <**> versioner)
-        ( fullDesc
-            <> progDesc "This is my program description"
-            <> header "This is my header"
-        )
+        (fullDesc <> header myHeader <> progDesc myDescription)
+    myHeader =
+      "Tool for exact diagonalization of quantum many-body systems. It combines "
+        <> "LatticeSymmetries and PRIMME libraries into a user-friendly package which "
+        <> "allows to diagonalize systems of up to 40ish spins."
+    myDescription =
+      "SpinED requires a single argument -- path to yaml configuration file "
+        <> "which specifies the Hamiltonian, observables, and other settings. "
+        <> "Please, refer to <https://github.com/twesterhout/spin-ed/blob/master/README.md> "
+        <> "for a description of accepted fields and their syntax."
