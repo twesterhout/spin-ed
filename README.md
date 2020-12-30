@@ -23,13 +23,14 @@ chmod +x SpinED-x86_64.AppImage
 ## 📝 Usage
 
 Using `SpinED` is quite simple. After installing the AppImage just feed it your
-input yaml file, and that's it. For example:
+input [yaml file](https://en.wikipedia.org/wiki/YAML), and that's it. For
+example:
 
 ```sh
-./SpinED-x86_64.AppImage my_system.yml
+./SpinED-x86_64.AppImage my_system.yaml
 ```
 
-where `my_system.yml` looks like this:
+where `my_system.yaml` looks like this:
 
 ```yaml
 basis:
@@ -90,3 +91,17 @@ DATASET "/hamiltonian/eigenvalues" {
 }
 }
 ```
+
+This was a very simple example! Have a look at [`template.yaml`](template.yaml)
+which describes all supported fields. [`example/`](example/) folder also
+contains various usage examples.
+
+
+## Contributing and support
+
+If you use this package for your research and have questions or suggestions,
+please, don't hesitate to contact me on Github or email.
+
+Also, if the fact that most code here is written in Haskell doesn't scare you,
+feel free to create a pull request implementing new features or fixing bugs!
+
