@@ -62,6 +62,7 @@ common common-options
                        RankNTypes
                        GADTs
                        DataKinds
+                       ConstraintKinds
                        MultiParamTypeClasses
                        StandaloneDeriving
                        GeneralizedNewtypeDeriving

@@ -276,10 +276,12 @@ buildRepresentatives = do
 isOperatorReal :: MonadIO m => Operator -> m Bool
 isOperatorReal (Operator _ op) = liftIO $ isOperatorReal' op
 
+type SupportedDatatype a = (H5.KnownDatatype' a, H5.KnownDatatype' (BlasRealPart a), BlasDatatype a, Show a, Show (BlasRealPart a))
+
 withDatatype ::
   Bool ->
   Datatype ->
-  (forall a. (H5.KnownDatatype' a, H5.KnownDatatype' (BlasRealPart a), BlasDatatype a) => Proxy a -> b) ->
+  (forall a. SupportedDatatype a => Proxy a -> b) ->
   b
 withDatatype True DatatypeFloat32 f = f (Proxy @Float)
 withDatatype True DatatypeFloat64 f = f (Proxy @Double)
@@ -301,13 +303,7 @@ instance (Storable a, H5.KnownDatatype' a) => H5.ToBlob (Block a) a where
 
 diagonalize ::
   forall a m proxy.
-  ( HasCallStack,
-    MonadIO m,
-    MonadMask m,
-    BlasDatatype a,
-    H5.KnownDatatype' a,
-    H5.KnownDatatype' (BlasRealPart a)
-  ) =>
+  (HasCallStack, MonadIO m, MonadMask m, SupportedDatatype a) =>
   proxy a ->
   EnvT m (Vector (BlasRealPart a), Block a, Vector (BlasRealPart a))
 diagonalize _ = do
@@ -327,6 +323,7 @@ diagonalize _ = do
       primmeOptions = o₃
       primmeOperator = inplaceApply . operatorObject $ hamiltonian
   result@(evals, evecs, rnorms) <- liftIO $ eigh primmeOptions primmeOperator
+  logInfo $ "Obtained eigenvalues " <> show evals
   asks eData >>= \file ->
     withGroup' file hamiltonianPath $ \g -> do
       writeDataset' g "eigenvalues" evals

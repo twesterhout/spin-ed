@@ -18,6 +18,7 @@ runApp :: Text -> IO ()
 runApp filename = do
   let messageAction = richMessageAction
   userConfig <- usingLoggerT messageAction $ readConfig filename >>= toConfig
+  H5.disableDiagOutput
   H5.withFile (cOutput userConfig) ReadWriteMode $ \file -> do
     let env = Environment userConfig messageAction file
     flip runEnvT env $ do
