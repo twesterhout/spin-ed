@@ -49,7 +49,7 @@ observables: []
 This will create a file `exact_diagonalization_result.h5` which contains the
 ground state of the Hamiltonian.
 
-```sh
+```console
 $ h5dump -H exact_diagonalization_result.h5
 HDF5 "exact_diagonalization_result.h5" {
 GROUP "/" {
@@ -78,7 +78,7 @@ GROUP "/" {
 ```
 
 And we can check that it computed the correct energy:
-```sh
+```console
 $ h5dump -d /hamiltonian/eigenvalues exact_diagonalization_result.h5
 HDF5 "exact_diagonalization_result.h5" {
 DATASET "/hamiltonian/eigenvalues" {
