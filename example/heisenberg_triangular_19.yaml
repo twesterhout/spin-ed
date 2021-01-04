@@ -31,13 +31,6 @@ basis:
                    6, 12, 13, 14,
                     11, 16, 17]
       sector: 3
-    # Translation along 60 degrees
-    - permutation: [3,  4,  5,
-                  7,  8,  9, 10,
-                6, 12, 13, 14, 15,
-                 11, 16, 17, 18,
-                    0,  1,  2]
-      sector: 5
 hamiltonian:
   name: "Heisenberg Hamiltonian"
   terms:
