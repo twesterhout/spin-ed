@@ -54,9 +54,11 @@ getErrorMessage c = bracket (ls_error_to_string (fromIntegral c)) ls_destroy_str
 checkStatus :: (MonadIO m, MonadThrow m, Integral a) => a -> m ()
 checkStatus c
   | c == 0 = return ()
-  | otherwise =
-    let c' = fromIntegral c
-     in throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
+  | otherwise = do
+    print =<< liftIO (getErrorMessage c')
+    throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
+  where
+    c' = fromIntegral c
 
 
 newtype Symmetry = Symmetry (ForeignPtr ())
