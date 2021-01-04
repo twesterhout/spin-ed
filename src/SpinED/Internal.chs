@@ -40,6 +40,10 @@ foreign import ccall unsafe "ls_error_to_string" ls_error_to_string :: CInt -> I
 
 foreign import ccall unsafe "ls_destroy_string" ls_destroy_string :: CString -> IO ()
 
+foreign import ccall unsafe "ls_enable_logging" ls_enable_logging :: IO ()
+
+foreign import ccall unsafe "ls_disable_logging" ls_disable_logging :: IO ()
+
 -- | Retrieve textual representation of an error
 getErrorMessage ::
   -- | Error code returned by @lattice_symmetries@ library

@@ -44,6 +44,7 @@ module SpinED
     getPhase,
     mkGroup,
     getGroupSize,
+    ls_enable_logging,
   )
 where
 

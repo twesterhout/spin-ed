@@ -2,3 +2,4 @@
 *.backup
 third_party/
 workdir/
+dist-newstyle/

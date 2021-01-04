@@ -17,6 +17,7 @@ versioner = infoOption (showVersion version) (short 'V' <> long "version" <> hel
 runApp :: Text -> IO ()
 runApp filename = do
   let messageAction = richMessageAction
+  ls_enable_logging
   userConfig <- usingLoggerT messageAction $ readConfig filename >>= toConfig
   H5.disableDiagOutput
   H5.withFile (cOutput userConfig) ReadWriteMode $ \file -> do
