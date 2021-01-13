@@ -79,10 +79,28 @@ jobs:
         uses: actions/download-artifact@v2
       - name: Inspect directory after downloading artifacts
         run: ls -alFR
-      - name: Create release and upload artifacts
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-            wget -q https://github.com/TheAssassin/pyuploadtool/releases/download/continuous/pyuploadtool-x86_64.AppImage
-            chmod +x pyuploadtool-x86_64.AppImage
-            ./pyuploadtool-x86_64.AppImage **/SpinED*.AppImage*
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Continuous
+          draft: false
+          prerelease: true
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: **/SpinED*.AppImage*
+          # - name: Create release and upload artifacts
+          #   env:
+          #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #   run: |
+          #       wget -q https://github.com/TheAssassin/pyuploadtool/releases/download/continuous/pyuploadtool-x86_64.AppImage
+          #       chmod +x pyuploadtool-x86_64.AppImage
+          #       ./pyuploadtool-x86_64.AppImage **/SpinED*.AppImage*
