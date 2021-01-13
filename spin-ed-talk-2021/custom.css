@@ -1,0 +1,21 @@
+
+.reveal .slides section {
+  font-size: 30px;
+}
+
+.reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5 {
+  text-transform: initial;
+}
+.reveal p {
+  font-family: Helvetica;
+}
+
+
+@font-face {
+  font-family: Iosevka;
+  src: url(assets/iosevka-regular.woff2);
+}
+
+.reveal code {
+  font-family: Iosevka;
+}
