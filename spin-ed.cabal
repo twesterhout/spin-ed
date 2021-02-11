@@ -8,7 +8,7 @@ license-file:        LICENSE
 author:              Tom Westerhout
 maintainer:          Tom Westerhout <14264576+twesterhout@users.noreply.github.com>
 copyright:           2020 Tom Westerhout
-build-type:          Custom
+build-type:          Configure
 extra-doc-files:     README.md
 tested-with:         GHC == 8.8.4
 extra-source-files:  build_lattice_symmetries.sh
@@ -17,8 +17,8 @@ flag shared
   description:       Build shared version of lattice_symmetries
   default:           False
 
-custom-setup
-  setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
+-- custom-setup
+--   setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
 
 common common-options
   build-depends:       base-noprelude ^>= 4.13.0.0

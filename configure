@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+# A hach to restart the script with Bash
+if [ -z "$BASH" ]; then exec bash "$0" "$@"; fi
+
+set -eu
+set -o pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -L | sed 's://:/:g')"
+WORKDIR="${SCRIPT_DIR}/third_party/build"
+
+download_lattice_symmetries() {
+  mkdir -vp "$WORKDIR"
+  pushd "$WORKDIR"
+  if [[ ! -d "lattice-symmetries" ]]; then
+    echo "Downloading lattice-symmetries..."
+    git clone --depth=1 https://github.com/twesterhout/lattice-symmetries.git
+  fi
+  pushd "lattice-symmetries"
+  git pull origin master
+  git submodule update --init --recursive
+  popd
+  popd
+}
+
+build_static_lib() {
+  pushd "${WORKDIR}/lattice-symmetries"
+  mkdir -vp build
+  pushd build
+  export CXXFLAGS="-fvisibility-inlines-hidden -march=nocona -mtune=haswell -fstack-protector-strong -fno-plt -ffunction-sections"
+  export CFLAGS="-march=nocona -mtune=haswell -fstack-protector-strong -fno-plt -ffunction-sections"
+  export LDFLAGS="-Wl,--as-needed -Wl,--gc-sections -Wl,-z,now -Wl,--disable-new-dtags"
+  export PREFIX="${SCRIPT_DIR}/third_party/lattice-symmetries"
+  cmake -GNinja -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DLatticeSymmetries_ENABLE_UNIT_TESTING=OFF \
+    ..
+  cmake --build .
+  cmake --build . --target install
+  popd
+  popd
+}
+
+generate_buildinfo() {
+  cat <<-EOF
+include-dirs:
+    ${PREFIX}/include
+extra-libraries:
+    lattice_symmetries
+extra-lib-dirs:
+    ${PREFIX}/lib
+EOF
+}
+
+print_help() {
+  echo ""
+  echo "Usage: ./configure [--help] [--clean]"
+  echo ""
+  echo "This script builds LatticeSymmetries C library and generates"
+  echo "spin-ed.buildinfo echo file for Cabal."
+  echo ""
+  echo "Options:"
+  echo "  --help         Display this message."
+  echo "  --clean        Clean up build directory."
+  echo ""
+}
+
+main() {
+  CLEAN=0
+  while [ $# -gt 0 ]; do
+    key="$1"
+    case $key in
+    --clean)
+      CLEAN=1
+      shift
+      ;;
+    --help)
+      print_help
+      exit 0
+      ;;
+    *)
+      echo "Warning: argument '$1' ignored"
+      shift
+      ;;
+    esac
+  done
+  if [ $CLEAN -eq 0 ]; then
+    echo "Running ./configure on $OSTYPE..."
+    download_lattice_symmetries
+    build_static_lib
+    generate_buildinfo >"spin-ed.buildinfo"
+  else
+    if [ -d "${WORKDIR}/lattice-symmetries" ]; then
+      cd "${WORKDIR}/lattice-symmetries"
+      rm -rf build
+    fi
+  fi
+}
+
+main "$@"
