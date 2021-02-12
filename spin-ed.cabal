@@ -77,9 +77,6 @@ library
                      , SpinED.Internal
                      , Prelude
   other-modules:       Paths_spin_ed
-  extra-libraries:     lattice_symmetries
-                     , stdc++
-                     , gomp
   ghc-options:         -O2
                        -fexpose-all-unfoldings
                        -fspecialise-aggressively

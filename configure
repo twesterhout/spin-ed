@@ -9,6 +9,14 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -L | sed 's://:/:g')"
 WORKDIR="${SCRIPT_DIR}/third_party/build"
 
+get_num_procs() {
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sysctl -n hw.logicalcpu
+  else
+    nproc
+  fi
+}
+
 download_lattice_symmetries() {
   mkdir -vp "$WORKDIR"
   pushd "$WORKDIR"
@@ -31,12 +39,13 @@ build_static_lib() {
   export CFLAGS="-march=nocona -mtune=haswell -fstack-protector-strong -fno-plt -ffunction-sections"
   export LDFLAGS="-Wl,--as-needed -Wl,--gc-sections -Wl,-z,now -Wl,--disable-new-dtags"
   export PREFIX="${SCRIPT_DIR}/third_party/lattice-symmetries"
-  cmake -GNinja -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  cmake \
+    -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DLatticeSymmetries_ENABLE_UNIT_TESTING=OFF \
     ..
-  cmake --build .
+  cmake --build . -- -j$(get_num_procs)
   cmake --build . --target install
   popd
   popd
@@ -46,10 +55,12 @@ generate_buildinfo() {
   cat <<-EOF
 include-dirs:
     ${PREFIX}/include
+extra-lib-dirs:
+    ${PREFIX}/lib64
+    ${PREFIX}/lib
 extra-libraries:
     lattice_symmetries
-extra-lib-dirs:
-    ${PREFIX}/lib
+    stdc++
 EOF
 }
 
