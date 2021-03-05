@@ -21,10 +21,13 @@ flag shared
 --   setup-depends: base >= 4.13.0.0 && < 5, Cabal >= 2.4, directory >= 1.2.1
 
 common common-options
-  build-depends:       base-noprelude ^>= 4.13.0.0
+  build-depends:       base >= 4.13.0.0
                      , relude
                      , exceptions
                      , safe-exceptions
+                     , resourcet
+                     , unliftio
+                     , unliftio-core
                      , mtl
                      , vector
                      , text
@@ -32,8 +35,9 @@ common common-options
                      , scientific
                      , yaml
                      , co-log
-                     , primme-hs
-                     , hdf5-hs
+                     , co-log-core
+                     , primme-hs >= 0.0.0.0
+                     , hdf5-hs >= 0.0.0.0
   
   ghc-options:         -Wall
                        -Wcompat
@@ -68,6 +72,7 @@ common common-options
                        GeneralizedNewtypeDeriving
                        DeriveAnyClass
                        DerivingStrategies
+                       NoImplicitPrelude
 
 library
   import:              common-options
@@ -75,7 +80,9 @@ library
   hs-source-dirs:      src
   exposed-modules:     SpinED
                      , SpinED.Internal
-                     , Prelude
+                     -- , Prelude
+  mixins:              base hiding (Prelude)
+                     , relude (Relude as Prelude)
   other-modules:       Paths_spin_ed
   ghc-options:         -O2
                        -fexpose-all-unfoldings
@@ -86,7 +93,11 @@ executable spin-ed
   hs-source-dirs:      app
   main-is:             Main.hs
   build-depends:       spin-ed
+                     , relude
                      , optparse-applicative
+  mixins:              base hiding (Prelude)
+                     , relude (Relude as Prelude)
+
   ghc-options:         -O2
                        -fexpose-all-unfoldings
                        -fspecialise-aggressively

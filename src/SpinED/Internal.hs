@@ -4,7 +4,6 @@
 -- Maintainer: Tom Westerhout <14264576+twesterhout@users.noreply.github.com>
 module SpinED.Internal where
 
-import Control.Exception.Safe (MonadThrow, bracket, throw)
 import Control.Monad.ST (RealWorld)
 import Data.Complex
 import Data.Vector.Storable (MVector, Vector)
@@ -21,9 +20,10 @@ import Foreign.Storable (Storable (..))
 import GHC.ForeignPtr (newConcForeignPtr)
 import Numeric.PRIMME
 import System.IO.Unsafe (unsafePerformIO)
+import UnliftIO.Exception (bracket, impureThrow, throwIO)
 import Prelude hiding (group)
 
-#include <lattice_symmetries/lattice_symmetries.h>
+-- #include <lattice_symmetries/lattice_symmetries.h>
 
 -- | Exceptions thrown when an error occurs in @liblattice_symmetries@.
 data LatticeSymmetriesException = LatticeSymmetriesException {eCode :: Int, eMessage :: Text}
@@ -55,15 +55,14 @@ getErrorMessage c = bracket (ls_error_to_string (fromIntegral c)) ls_destroy_str
 
 -- | Check the status code returned by @lattice_symmetries@ library. If it
 -- indicates an error, 'LatticeSymmetriesException' is thrown.
-checkStatus :: (MonadIO m, MonadThrow m, Integral a) => a -> m ()
+checkStatus :: (MonadIO m, Integral a) => a -> m ()
 checkStatus c
   | c == 0 = return ()
   | otherwise = do
     print =<< liftIO (getErrorMessage c')
-    throw . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
+    throwIO . LatticeSymmetriesException c' =<< liftIO (getErrorMessage c')
   where
     c' = fromIntegral c
-
 
 newtype Symmetry = Symmetry (ForeignPtr ())
 
@@ -98,7 +97,7 @@ mkObject :: (Ptr (Ptr ()) -> IO CInt) -> IO (Ptr ())
 mkObject f = alloca $ \ptrPtr -> f ptrPtr >>= checkStatus >> peek ptrPtr
 
 mkSymmetry ::
-  (MonadIO m, MonadThrow m) =>
+  MonadIO m =>
   -- | Permutation
   [Int] ->
   -- | Symmetry sector
@@ -107,9 +106,9 @@ mkSymmetry ::
 mkSymmetry !permutation !sector = do
   -- Make sure permutation and sector can be safely converted to unsigned
   -- representations. Everything else is checked by ls_create_symmetry
-  when (any (< 0) permutation) . throw . SpinEDException $
+  when (any (< 0) permutation) . throwIO . SpinEDException $
     "invalid permutation: " <> show permutation <> "; indices must be non-negative"
-  when (sector < 0) . throw . SpinEDException $
+  when (sector < 0) . throwIO . SpinEDException $
     "invalid sector: " <> show sector <> "; expected a non-negative number"
   ptr <- liftIO . mkObject $ \ptrPtr ->
     withArrayLen (fromIntegral <$> permutation) $ \n permutationPtr ->
@@ -140,7 +139,7 @@ withSymmetries xs func = withManyForeignPtr pointers func
     pointers = (\(Symmetry p) -> p) <$> xs
 
 mkGroup ::
-  (MonadIO m, MonadThrow m) =>
+  MonadIO m =>
   -- | Symmetry generators
   [Symmetry] ->
   m SymmetryGroup
@@ -176,7 +175,11 @@ foreign import ccall unsafe "ls_create_spin_basis"
 foreign import ccall unsafe "&ls_destroy_spin_basis"
   ls_destroy_spin_basis :: FunPtr (Ptr () -> IO ())
 
-foreign import ccall safe "ls_build" ls_build :: Ptr () -> IO CInt
+foreign import ccall safe "ls_build"
+  ls_build :: Ptr () -> IO CInt
+
+foreign import ccall safe "ls_build_unsafe"
+  ls_build_unsafe :: Ptr () -> Word64 -> Ptr Word64 -> IO CInt
 
 foreign import ccall unsafe "ls_get_number_states"
   ls_get_number_states :: Ptr () -> Ptr Word64 -> IO CInt
@@ -194,7 +197,7 @@ foreign import ccall unsafe "ls_destroy_states"
   ls_destroy_states :: Ptr () -> IO ()
 
 mkBasis ::
-  (MonadIO m, MonadThrow m) =>
+  MonadIO m =>
   -- | Symmetry group
   SymmetryGroup ->
   -- | Number of spins
@@ -205,17 +208,17 @@ mkBasis ::
   Maybe Int ->
   m SpinBasis
 mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight !spinInversion = do
-  when (numberSpins <= 0) . throw . SpinEDException $
+  when (numberSpins <= 0) . throwIO . SpinEDException $
     "invalid number of spins: " <> show numberSpins <> "; expected a positive number"
   hammingWeight' <- case hammingWeight of
     Just x -> do
-      when (x < 0) . throw . SpinEDException $
+      when (x < 0) . throwIO . SpinEDException $
         "invalid Hamming weight: " <> show x <> "; expected a non-negative number"
       return $ fromIntegral x
     Nothing -> return (-1)
   spinInversion' <- case spinInversion of
     Just x -> do
-      when (x /= 1 && x /= -1) . throw . SpinEDException $
+      when (x /= 1 && x /= -1) . throwIO . SpinEDException $
         "invalid value for spin inversion: " <> show x <> "; expected either -1 or +1"
       return $ fromIntegral x
     Nothing -> return 0
@@ -224,8 +227,13 @@ mkBasis !(SymmetryGroup group) !numberSpins !hammingWeight !spinInversion = do
       ls_create_spin_basis ptrPtr groupPtr (fromIntegral numberSpins) hammingWeight' spinInversion'
   fmap SpinBasis . liftIO $ newForeignPtr ls_destroy_spin_basis ptr
 
-buildBasis :: (MonadIO m, MonadThrow m) => SpinBasis -> m ()
-buildBasis (SpinBasis basis) = checkStatus =<< liftIO (withForeignPtr basis ls_build)
+buildBasis :: MonadIO m => SpinBasis -> Maybe (Vector Word64) -> m ()
+buildBasis (SpinBasis basis) representatives = do
+  status <- liftIO $ case representatives of
+    (Just v) -> withForeignPtr basis $ \basisPtr -> V.unsafeWith v $ \vPtr ->
+      ls_build_unsafe basisPtr (fromIntegral $ V.length v) vPtr
+    Nothing -> withForeignPtr basis ls_build
+  checkStatus status
 
 basisGetStates :: MonadIO m => SpinBasis -> m (Vector Word64)
 basisGetStates (SpinBasis basis) = liftIO $
@@ -236,7 +244,7 @@ basisGetStates (SpinBasis basis) = liftIO $
       <*> pure (fromIntegral . ls_states_get_size $ rawPtr)
 
 -- Unsafe for now, but fixable with SpinBasis' GADT later on
-getNumberStates :: (MonadIO m, MonadThrow m) => SpinBasis -> m Int
+getNumberStates :: MonadIO m => SpinBasis -> m Int
 getNumberStates (SpinBasis p) = do
   count <- liftIO $
     withForeignPtr p $ \p' ->
@@ -268,7 +276,7 @@ foreign import ccall unsafe "&ls_destroy_interaction"
   ls_destroy_interaction :: FunPtr (Ptr () -> IO ())
 
 toMatrix ::
-  (MonadThrow m, Show r, Real r) =>
+  (Monad m, Show r, Real r) =>
   -- | Expected dimension @n@ of the matrix
   Int ->
   -- | Square @matrix@ of dimension @n@
@@ -276,14 +284,14 @@ toMatrix ::
   -- | Row-major representation of @matrix@
   m (Vector (Complex Double))
 toMatrix !dim !rows = do
-  when (length rows /= dim) . throw . SpinEDException $
+  when (length rows /= dim) . impureThrow . SpinEDException $
     "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
-  when (any ((/= dim) . length) rows) . throw . SpinEDException $
+  when (any ((/= dim) . length) rows) . impureThrow . SpinEDException $
     "invalid matrix: " <> show rows <> "; expected a square matrix of dimension " <> show dim
   return . V.fromList . fmap (fmap (fromRational . toRational)) . concat $ rows
 
 class MakeInteraction a where
-  mkInteraction' :: (MonadIO m, MonadThrow m, Show r, Real r) => [[Complex r]] -> [a] -> m Interaction
+  mkInteraction' :: (MonadIO m, Show r, Real r) => [[Complex r]] -> [a] -> m Interaction
 
 instance MakeInteraction Int where
   mkInteraction' matrix sites =
@@ -315,7 +323,7 @@ instance MakeInteraction (Int, Int, Int, Int) where
 
 instance MakeInteraction [Int] where
   mkInteraction' _ [] =
-    throw . SpinEDException $
+    throwIO . SpinEDException $
       "zero-point interactions (i.e. constant factors) are not supported"
   mkInteraction' matrix rows@(r : _) = case n of
     1 -> mkInteraction' matrix =<< mapM match1 rows
@@ -323,25 +331,25 @@ instance MakeInteraction [Int] where
     3 -> mkInteraction' matrix =<< mapM match3 rows
     4 -> mkInteraction' matrix =<< mapM match4 rows
     _ ->
-      throw . SpinEDException $
+      throwIO . SpinEDException $
         "currently only 1-, 2-, 3-, and 4-point interactions are supported, but received n=" <> show n
     where
       n = length r
       match1 [x₁] = return x₁
-      match1 _ = throw failure
+      match1 _ = throwIO failure
       match2 [x₁, x₂] = return (x₁, x₂)
-      match2 _ = throw failure
+      match2 _ = throwIO failure
       match3 [x₁, x₂, x₃] = return (x₁, x₂, x₃)
-      match3 _ = throw failure
+      match3 _ = throwIO failure
       match4 [x₁, x₂, x₃, x₄] = return (x₁, x₂, x₃, x₄)
-      match4 _ = throw failure
+      match4 _ = throwIO failure
       failure =
         SpinEDException $
           "invalid sites: " <> show rows <> "; expected an array of length-" <> show n <> " tuples"
 
-unsafeMkInteraction :: (MonadIO m, MonadThrow m) => CreateInteraction -> Int -> Vector (Complex Double) -> Vector Int -> m Interaction
+unsafeMkInteraction :: MonadIO m => CreateInteraction -> Int -> Vector (Complex Double) -> Vector Int -> m Interaction
 unsafeMkInteraction ffiCreate numberSites matrix sites = do
-  when (V.any (< 0) sites) . throw . SpinEDException $ "site indices must be all non-negative numbers"
+  when (V.any (< 0) sites) . throwIO . SpinEDException $ "site indices must be all non-negative numbers"
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
       c <- V.unsafeWith matrix $ \matrixPtr ->
@@ -380,7 +388,7 @@ withInteractions xs func = withManyForeignPtr pointers func
   where
     pointers = (\(Interaction p) -> p) <$> xs
 
-mkOperator :: (MonadIO m, MonadThrow m) => SpinBasis -> [Interaction] -> m Operator'
+mkOperator :: MonadIO m => SpinBasis -> [Interaction] -> m Operator'
 mkOperator (SpinBasis basis) terms = do
   (code, ptr) <- liftIO $
     alloca $ \ptrPtr -> do
@@ -403,7 +411,7 @@ toCdatatype x = case x of
 inplaceApply :: forall a. BlasDatatype a => Operator' -> Block a -> MBlock RealWorld a -> IO ()
 inplaceApply (Operator' op) (Block (size, blockSize) xStride x) (MBlock (size', blockSize') yStride y)
   | size /= size' || blockSize /= blockSize' =
-    throw . SpinEDException $
+    throwIO . SpinEDException $
       "dimensions of x and y do not match: " <> show (size, blockSize) <> " != " <> show (size', blockSize')
   | otherwise =
     withForeignPtr op $ \opPtr ->
