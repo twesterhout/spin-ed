@@ -10,7 +10,7 @@ maintainer:          Tom Westerhout <14264576+twesterhout@users.noreply.github.c
 copyright:           2020 Tom Westerhout
 build-type:          Configure
 extra-doc-files:     README.md
-tested-with:         GHC == 8.8.4
+tested-with:         GHC == 8.10.4
 extra-source-files:  build_lattice_symmetries.sh
 
 flag shared
@@ -36,8 +36,8 @@ common common-options
                      , yaml
                      , co-log
                      , co-log-core
-                     , primme-hs >= 0.0.0.0
-                     , hdf5-hs >= 0.0.0.0
+                     , primme-hs
+                     , hdf5-hs
   
   ghc-options:         -Wall
                        -Wcompat

@@ -8,6 +8,7 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -L | sed 's://:/:g')"
 WORKDIR="${SCRIPT_DIR}/third_party/build"
+PREFIX="${SCRIPT_DIR}/third_party/lattice-symmetries"
 
 get_num_procs() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -38,7 +39,6 @@ build_static_lib() {
   export CXXFLAGS="-fvisibility-inlines-hidden -march=nocona -mtune=haswell -fstack-protector-strong -fno-plt -ffunction-sections"
   export CFLAGS="-march=nocona -mtune=haswell -fstack-protector-strong -fno-plt -ffunction-sections"
   export LDFLAGS="-Wl,--as-needed -Wl,--gc-sections -Wl,-z,now -Wl,--disable-new-dtags"
-  export PREFIX="${SCRIPT_DIR}/third_party/lattice-symmetries"
   cmake \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DCMAKE_BUILD_TYPE=Release \
@@ -60,6 +60,7 @@ extra-lib-dirs:
     ${PREFIX}/lib
 extra-libraries:
     lattice_symmetries
+    gomp
     stdc++
 EOF
 }
