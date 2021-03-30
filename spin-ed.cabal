@@ -11,7 +11,7 @@ copyright:           2020 Tom Westerhout
 build-type:          Configure
 extra-doc-files:     README.md
 tested-with:         GHC == 8.10.4
-extra-source-files:  build_lattice_symmetries.sh
+extra-source-files:  configure
 
 flag shared
   description:       Build shared version of lattice_symmetries
@@ -76,7 +76,7 @@ common common-options
 
 library
   import:              common-options
-  build-tool-depends:  c2hs:c2hs >= 0.28.6
+  -- build-tool-depends:  c2hs:c2hs >= 0.28.6
   hs-source-dirs:      src
   exposed-modules:     SpinED
                      , SpinED.Internal
