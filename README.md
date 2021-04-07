@@ -7,27 +7,29 @@
 User-friendly exact diagonalization package for quantum many-body systems.
 
 
-## 🔧 Installing
+## :wrench: Installing
 
-We provide pre-built [AppImage](https://appimage.org/)s for Linux. Go to
-[Releases](https://github.com/twesterhout/spin-ed/releases) page, download the
-AppImage to your location of choice, and make it executable. That's it! 🥳
+We provide pre-built static executables for Linux. Go to
+[Releases](https://github.com/twesterhout/spin-ed/releases) page and download the
+executable to your location of choice. That's it! :partying_face:
 
-Or, if you prefer the command line:
-```sh
-wget https://github.com/twesterhout/spin-ed/releases/download/continuous/SpinED-x86_64.AppImage
-chmod +x SpinED-x86_64.AppImage
-```
+> :information_source: **Note:** executables are currently tagged by git
+> commits from which they were built. It is suggested that after downloading
+> the application you create a symbolic link to it:
+>
+> ~~~~~~~sh
+> ln --symbolic SpinED SpinED-8b0138b # the commit hash may differ in your case
+> ~~~~~~~
+
 
 
 ## 📝 Usage
 
-Using `SpinED` is quite simple. After installing the AppImage just feed it your
-input [yaml file](https://en.wikipedia.org/wiki/YAML), and that's it. For
-example:
+Using `SpinED` is quite simple. Just feed it your input [yaml
+file](https://en.wikipedia.org/wiki/YAML). For example:
 
 ```sh
-./SpinED-x86_64.AppImage my_system.yaml
+./SpinED my_system.yaml
 ```
 
 where `my_system.yaml` looks like this:
@@ -47,8 +49,8 @@ hamiltonian:
 observables: []
 ```
 
-This will create a file `exact_diagonalization_result.h5` which contains the
-ground state of the Hamiltonian.
+This will create a file `exact_diagonalization_result.h5` which will contain
+the ground state of the Hamiltonian.
 
 ```console
 $ h5dump -H exact_diagonalization_result.h5
@@ -92,8 +94,8 @@ DATASET "/hamiltonian/eigenvalues" {
 }
 ```
 
-This was a very simple example! Have a look at [`template.yaml`](template.yaml)
-which describes all supported fields. [`example/`](example/) folder also
+This was a very simple example! Have a look at [`template.yaml`](./template.yaml)
+which describes all supported fields. [`example/`](./example/) folder also
 contains various usage examples.
 
 
