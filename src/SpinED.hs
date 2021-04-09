@@ -361,7 +361,8 @@ writeDataset g name x = do
 
 instance (BlasDatatype a, H5.KnownDatatype a) => H5.KnownDataset (Block a) where
   -- Block is in column-major format, but TemporaryStridedMatrix -- in row-major
-  withArrayView (Block (d₀, d₁) s₁ v) = H5.withArrayView (H5.TemporaryStridedMatrix (d₁, d₀) s₁ v)
+  withArrayView (Block (d₀, d₁) s₁ v) action =
+    H5.withArrayView (H5.TemporaryStridedMatrix (d₁, d₀) s₁ v) action
   peekArrayView view =
     H5.peekArrayView view >>= \m -> case m of
       (H5.TemporaryStridedMatrix (d₀, d₁) s₀ v) -> return (Block (d₁, d₀) s₀ v)
