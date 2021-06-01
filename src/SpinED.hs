@@ -304,7 +304,7 @@ computeExpectation (Operator name operator) x = do
   logInfo $ "Obtained expectation values " <> show measurements
   withOutputFile $ \file -> do
     group <- H5.openGroup file observablesPath
-    writeDataset group name x
+    writeDataset group name measurements
 
 computeExpectations ::
   (MonadUnliftIO m, BlasDatatype a, H5.KnownDatatype a) =>
