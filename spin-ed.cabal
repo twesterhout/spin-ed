@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                spin-ed
-version:             0.0.0.0
+version:             0.0.0.1
 synopsis:            User-friendly exact diagonalization for spin systems
 description:         User-friendly exact diagonalization for spin systems
 license:             BSD-3-Clause
